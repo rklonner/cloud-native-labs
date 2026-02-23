@@ -1,0 +1,51 @@
+
+# Generate a policy that allows the ESO to manage secrets under projects/ as pushSecret from the provider-sql database
+apiVersion: vault.vault.upbound.io/v1alpha1
+kind: Policy
+metadata:
+  name: eso-push-policy
+spec:
+  forProvider:
+    name: "eso-push-policy"
+    # WICHTIG: Bei KV-Engine v2 muss der Pfad /data/ enthalten
+    policy: |
+      # 1. Schreibrechte für die eigentlichen Daten
+      path "projects/data/*" {
+        capabilities = ["create", "update", "read", "delete", "list"]
+      }
+      # 2. Rechte für die Metadaten (wichtig für den ESO Push-Check)
+      path "projects/metadata/*" {
+        capabilities = ["create", "update", "read", "delete", "list"]
+      }
+---
+# Create a token based on the above policy
+apiVersion: vault.vault.upbound.io/v1alpha1
+kind: Token
+metadata:
+  name: eso-write-token
+spec:
+  forProvider:
+    policies:
+      - "eso-push-policy"
+    renewable: true
+    ttl: "720h"
+  writeConnectionSecretToRef:
+    name: eso-secret-store-vault-token # Dies erstellt das K8s-Secret für Punkt 2.1
+    namespace: crossplane-system
+---
+# Create a secret store in ESO that uses the Vault provider and die oben erstellten Token-Secret 
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: eso-secret-store-vault-backend
+  namespace: crossplane-system
+spec:
+  provider:
+    vault:
+      server: "http://vault.vault.svc.cluster.local:8200"
+      path: "projects" 
+      version: "v2"
+      auth:
+        tokenSecretRef:
+          name: eso-secret-store-vault-token
+          key: attribute.client_token

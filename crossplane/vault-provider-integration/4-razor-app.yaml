@@ -1,0 +1,116 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: razor
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: razor-sa
+  namespace: razor
+---
+apiVersion: vault.vault.upbound.io/v1alpha1
+kind: Policy
+metadata:
+  name: razor-policy
+spec:
+  forProvider:
+    name: "razor-policy"
+    policy: |
+      path "projects/data/razor/*" {
+        capabilities = ["read", "list"]
+      }
+---
+apiVersion: kubernetes.vault.upbound.io/v1alpha1
+kind: AuthBackendRole
+metadata:
+  name: razor-role
+spec:
+  forProvider:
+    # Verweist auf das Auth-Backend (standardmäßig "kubernetes")
+    backend: "kubernetes"
+    roleName: "razor-role"
+    boundServiceAccountNames:
+      - "razor-sa"
+    boundServiceAccountNamespaces:
+      - "razor"
+    tokenPolicies:
+      - "razor-policy" # Muss exakt dem 'name' in der Policy oben entsprechen
+    tokenTtl: 3600
+---
+apiVersion: mssql.sql.crossplane.io/v1alpha1
+kind: Database
+metadata:
+  name: razor-db
+spec:
+  providerConfigRef:
+    name: mssql-local
+  writeConnectionSecretToRef:
+    name: secret-razor-db-conn # Nur noch lokales K8s-Secret
+    namespace: crossplane-system
+---
+# RO User
+apiVersion: mssql.sql.crossplane.io/v1alpha1
+kind: User
+metadata:
+  name: razor-readonly-user
+spec:
+  forProvider:
+    database: razor-db      # Target your database
+  writeConnectionSecretToRef:
+    name: secret-razor-db-readonly-user
+    namespace: crossplane-system
+  providerConfigRef:
+    name: mssql-local
+---
+# RW User
+apiVersion: mssql.sql.crossplane.io/v1alpha1
+kind: User
+metadata:
+  name: razor-readwrite-user
+spec:
+  forProvider:
+    database: razor-db      # Target your database
+  writeConnectionSecretToRef:
+    name: secret-razor-db-readwrite-user
+    namespace: crossplane-system
+  providerConfigRef:
+    name: mssql-local  
+---
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: push-razor-db-ro-user-to-vault
+  namespace: crossplane-system
+spec:
+  # secret store points to secret engine "projects" in vault
+  secretStoreRefs:
+    - name: eso-secret-store-vault-backend # Dein neuer funktionierender Store
+      kind: SecretStore
+  selector:
+    secret:
+      name: secret-razor-db-readonly-user # Quelle von Crossplane
+  data:
+    - match:
+        secretKey: # if emtpy, all secret attributes will be pushed
+        remoteRef:
+          remoteKey: razor/database/ro-user
+---
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: push-razor-db-rw-user-to-vault
+  namespace: crossplane-system
+spec:
+  # secret store points to secret engine "projects" in vault
+  secretStoreRefs:
+    - name: eso-secret-store-vault-backend # Dein neuer funktionierender Store
+      kind: SecretStore
+  selector:
+    secret:
+      name: secret-razor-db-readwrite-user # Quelle von Crossplane
+  data:
+    - match:
+        secretKey: # if emtpy, all secret attributes will be pushed
+        remoteRef:
+          remoteKey: razor/database/rw-user
