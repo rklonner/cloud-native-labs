@@ -1,0 +1,213 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: razor
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: razor-sa
+  namespace: razor
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: razor-deployment
+  name: razor-deployment
+  namespace: razor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: razor-deployment
+  template:
+    metadata:
+      labels:
+        app: razor-deployment
+    spec:
+      serviceAccountName: razor-sa
+      containers:
+      - image: nginx
+        name: nginx
+        envFrom:
+        - secretRef:
+            name: database-user-ro
+---
+apiVersion: mssql.sql.crossplane.io/v1alpha1
+kind: Database
+metadata:
+  name: razor-db
+spec:
+  providerConfigRef:
+    name: mssql-local
+  writeConnectionSecretToRef:
+    name: secret-razor-db-conn
+    namespace: crossplane-system
+---
+# RO User
+apiVersion: mssql.sql.crossplane.io/v1alpha1
+kind: User
+metadata:
+  name: razor-readonly-user
+spec:
+  forProvider:
+    database: razor-db
+  writeConnectionSecretToRef:
+    name: secret-razor-db-readonly-user
+    namespace: crossplane-system
+  providerConfigRef:
+    name: mssql-local
+---
+# RW User
+apiVersion: mssql.sql.crossplane.io/v1alpha1
+kind: User
+metadata:
+  name: razor-readwrite-user
+spec:
+  forProvider:
+    database: razor-db
+  writeConnectionSecretToRef:
+    name: secret-razor-db-readwrite-user
+    namespace: crossplane-system
+  providerConfigRef:
+    name: mssql-local
+---
+# Read-Only Grant
+apiVersion: mssql.sql.crossplane.io/v1alpha1
+kind: Grant
+metadata:
+  name: razor-readonly-grant
+spec:
+  forProvider:
+    database: razor-db
+    user: razor-readonly-user
+    permissions:
+      - "CONNECT"
+      - "SELECT"
+  providerConfigRef:
+    name: mssql-local
+---
+# Read-Write Grant
+apiVersion: mssql.sql.crossplane.io/v1alpha1
+kind: Grant
+metadata:
+  name: razor-readwrite-grant
+spec:
+  forProvider:
+    database: razor-db
+    user: razor-readwrite-user
+    permissions:
+      - "CREATE TABLE"
+      - "ALTER"
+      - "CONNECT"
+      - "SELECT"
+      - "INSERT"
+      - "UPDATE"
+  providerConfigRef:
+    name: mssql-local
+---
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: push-razor-db-ro-user-to-vault
+  namespace: crossplane-system
+spec:
+  # secret store points to secret engine "projects" in vault
+  secretStoreRefs:
+    - name: eso-secret-store-vault-backend
+      kind: SecretStore
+  selector:
+    secret:
+      name: secret-razor-db-readonly-user
+  data:
+    - match:
+        secretKey: # if emtpy, all secret attributes will be pushed
+        remoteRef:
+          remoteKey: razor/database/ro-user
+---
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: push-razor-db-rw-user-to-vault
+  namespace: crossplane-system
+spec:
+  # secret store points to secret engine "projects" in vault
+  secretStoreRefs:
+    - name: eso-secret-store-vault-backend
+      kind: SecretStore
+  selector:
+    secret:
+      name: secret-razor-db-readwrite-user
+  data:
+    - match:
+        secretKey: # if emtpy, all secret attributes will be pushed
+        remoteRef:
+          remoteKey: razor/database/rw-user
+---
+# Create a Vault policy that allows the app to read the database credentials from Vault
+apiVersion: vault.vault.upbound.io/v1alpha1
+kind: Policy
+metadata:
+  name: razor-policy
+spec:
+  forProvider:
+    name: "razor-policy"
+    policy: |
+      path "projects/data/razor/*" {
+        capabilities = ["read", "list"]
+      }
+---
+# Create a Vault role that binds the Kubernetes ServiceAccount to the above policy
+apiVersion: kubernetes.vault.upbound.io/v1alpha1
+kind: AuthBackendRole
+metadata:
+  name: razor-role
+spec:
+  forProvider:
+    backend: "kubernetes"
+    roleName: "razor-role"
+    boundServiceAccountNames:
+      - "razor-sa"
+    boundServiceAccountNamespaces:
+      - "razor"
+    tokenPolicies:
+      - "razor-policy"
+    tokenTtl: 3600
+---
+# Create an ESO SecretStore that uses the Vault provider and the above role for authentication
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: vault-app-backend
+  namespace: razor
+spec:
+  provider:
+    vault:
+      server: "http://vault.vault.svc.cluster.local:8200"
+      path: "projects"
+      version: "v2"
+      auth:
+        kubernetes:
+          mountPath: "kubernetes"
+          role: "razor-role"
+          serviceAccountRef:
+            name: "razor-sa"
+---
+# Create a secret with database connection details to be used by the app
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: razor-db-credentials-ro
+  namespace: razor
+spec:
+  refreshInterval: "15s"
+  secretStoreRef:
+    name: vault-app-backend
+    kind: SecretStore
+  target:
+    name: database-user-ro
+    creationPolicy: Owner
+  dataFrom:
+  - extract:
+      key: razor/database/ro-user

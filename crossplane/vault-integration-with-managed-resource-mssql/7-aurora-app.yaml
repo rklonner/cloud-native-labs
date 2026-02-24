@@ -1,0 +1,213 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: aurora
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aurora-sa
+  namespace: aurora
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: aurora-deployment
+  name: aurora-deployment
+  namespace: aurora
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: aurora-deployment
+  template:
+    metadata:
+      labels:
+        app: aurora-deployment
+    spec:
+      serviceAccountName: aurora-sa
+      containers:
+      - image: nginx
+        name: nginx
+        envFrom:
+        - secretRef:
+            name: database-user-ro
+---
+apiVersion: mssql.sql.crossplane.io/v1alpha1
+kind: Database
+metadata:
+  name: aurora-db
+spec:
+  providerConfigRef:
+    name: mssql-local
+  writeConnectionSecretToRef:
+    name: secret-aurora-db-conn
+    namespace: crossplane-system
+---
+# RO User
+apiVersion: mssql.sql.crossplane.io/v1alpha1
+kind: User
+metadata:
+  name: aurora-readonly-user
+spec:
+  forProvider:
+    database: aurora-db
+  writeConnectionSecretToRef:
+    name: secret-aurora-db-readonly-user
+    namespace: crossplane-system
+  providerConfigRef:
+    name: mssql-local
+---
+# RW User
+apiVersion: mssql.sql.crossplane.io/v1alpha1
+kind: User
+metadata:
+  name: aurora-readwrite-user
+spec:
+  forProvider:
+    database: aurora-db
+  writeConnectionSecretToRef:
+    name: secret-aurora-db-readwrite-user
+    namespace: crossplane-system
+  providerConfigRef:
+    name: mssql-local
+---
+# Read-Only Grant
+apiVersion: mssql.sql.crossplane.io/v1alpha1
+kind: Grant
+metadata:
+  name: aurora-readonly-grant
+spec:
+  forProvider:
+    database: aurora-db
+    user: aurora-readonly-user
+    permissions:
+      - "CONNECT"
+      - "SELECT"
+  providerConfigRef:
+    name: mssql-local
+---
+# Read-Write Grant
+apiVersion: mssql.sql.crossplane.io/v1alpha1
+kind: Grant
+metadata:
+  name: aurora-readwrite-grant
+spec:
+  forProvider:
+    database: aurora-db
+    user: aurora-readwrite-user
+    permissions:
+      - "CREATE TABLE"
+      - "ALTER"
+      - "CONNECT"
+      - "SELECT"
+      - "INSERT"
+      - "UPDATE"
+  providerConfigRef:
+    name: mssql-local
+---
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: push-aurora-db-ro-user-to-vault
+  namespace: crossplane-system
+spec:
+  # secret store points to secret engine "projects" in Vault
+  secretStoreRefs:
+    - name: eso-secret-store-vault-backend
+      kind: SecretStore
+  selector:
+    secret:
+      name: secret-aurora-db-readonly-user
+  data:
+    - match:
+        secretKey: # if emtpy, all secret attributes will be pushed
+        remoteRef:
+          remoteKey: aurora/database/ro-user
+---
+apiVersion: external-secrets.io/v1alpha1
+kind: PushSecret
+metadata:
+  name: push-aurora-db-rw-user-to-vault
+  namespace: crossplane-system
+spec:
+  # secret store points to secret engine "projects" in vault
+  secretStoreRefs:
+    - name: eso-secret-store-vault-backend
+      kind: SecretStore
+  selector:
+    secret:
+      name: secret-aurora-db-readwrite-user
+  data:
+    - match:
+        secretKey: # if emtpy, all secret attributes will be pushed
+        remoteRef:
+          remoteKey: aurora/database/rw-user
+---
+# Create a Vault policy that allows the app to read the database credentials from Vault
+apiVersion: vault.vault.upbound.io/v1alpha1
+kind: Policy
+metadata:
+  name: aurora-policy
+spec:
+  forProvider:
+    name: "aurora-policy"
+    policy: |
+      path "projects/data/aurora/*" {
+        capabilities = ["read", "list"]
+      }
+---
+# Create a Vault role that binds the Kubernetes ServiceAccount to the above policy
+apiVersion: kubernetes.vault.upbound.io/v1alpha1
+kind: AuthBackendRole
+metadata:
+  name: aurora-role
+spec:
+  forProvider:
+    backend: "kubernetes"
+    roleName: "aurora-role"
+    boundServiceAccountNames:
+      - "aurora-sa"
+    boundServiceAccountNamespaces:
+      - "aurora"
+    tokenPolicies:
+      - "aurora-policy"
+    tokenTtl: 3600
+---
+# Create an ESO SecretStore that uses the Vault provider and the above role for authentication
+apiVersion: external-secrets.io/v1
+kind: SecretStore
+metadata:
+  name: vault-app-backend
+  namespace: aurora
+spec:
+  provider:
+    vault:
+      server: "http://vault.vault.svc.cluster.local:8200"
+      path: "projects"
+      version: "v2"
+      auth:
+        kubernetes:
+          mountPath: "kubernetes"
+          role: "aurora-role"
+          serviceAccountRef:
+            name: "aurora-sa"
+---
+# Create a secret with database connection details to be used by the app
+apiVersion: external-secrets.io/v1
+kind: ExternalSecret
+metadata:
+  name: aurora-db-credentials-ro
+  namespace: aurora
+spec:
+  refreshInterval: "15s"
+  secretStoreRef:
+    name: vault-app-backend
+    kind: SecretStore
+  target:
+    name: database-user-ro
+    creationPolicy: Owner
+  dataFrom:
+  - extract:
+      key: aurora/database/ro-user

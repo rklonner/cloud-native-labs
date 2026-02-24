@@ -2,9 +2,9 @@
 
 **Demonstrate**:
 * How to configure Vault provider
-* How to create secret engines and secrets 
+* How to create secret engines and secrets with the Vault provider
 * How to create kubernetes auth role and policy for registering an application
-* How to utilize External Secrets operator pushSecrets to store credentials of provider-sql database
+* How to utilize External Secrets Operator `pushSecret` to store credentials of provider-sql database
 * How to grant access to existing secrets
 
 **Prerequisites**:

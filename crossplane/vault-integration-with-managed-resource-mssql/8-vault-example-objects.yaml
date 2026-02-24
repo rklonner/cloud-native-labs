@@ -4,9 +4,8 @@ metadata:
   name: kv-v2-engine
 spec:
   forProvider:
-    path: "projects"
+    path: "example-engine"
     type: "kv-v2"
-    description: "Secret Engine verwaltet durch Crossplane"
 ---
 apiVersion: v1
 kind: Secret
@@ -15,7 +14,6 @@ metadata:
   namespace: crossplane-system
 type: Opaque
 stringData:
-  # Der Inhalt muss ein valider JSON-String sein
   json: '{"username":"admin","password":"very-secure-password"}'
 ---
 apiVersion: kv.vault.upbound.io/v1alpha1
@@ -25,8 +23,7 @@ metadata:
 spec:
   forProvider:
     name: "database/config"
-    mount: "projects"
-    # Das korrekte Feld für aktuelle Provider-Versionen
+    mount: "example-engine"
     dataJsonSecretRef:
       name: db-payload-json
       namespace: crossplane-system

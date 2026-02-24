@@ -7,7 +7,6 @@ metadata:
 spec:
   forProvider:
     name: "eso-push-policy"
-    # WICHTIG: Bei KV-Engine v2 muss der Pfad /data/ enthalten
     policy: |
       # 1. Schreibrechte für die eigentlichen Daten
       path "projects/data/*" {
@@ -30,7 +29,7 @@ spec:
     renewable: true
     ttl: "720h"
   writeConnectionSecretToRef:
-    name: eso-secret-store-vault-token # Dies erstellt das K8s-Secret für Punkt 2.1
+    name: eso-secret-store-vault-token
     namespace: crossplane-system
 ---
 # Create a secret store in ESO that uses the Vault provider and die oben erstellten Token-Secret 
