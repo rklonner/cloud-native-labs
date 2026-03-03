@@ -1,0 +1,7 @@
+apiVersion: example.com/v1alpha1
+kind: RazorApp
+metadata:
+  name: aurora
+  namespace: aurora
+spec:
+  projectName: aurora

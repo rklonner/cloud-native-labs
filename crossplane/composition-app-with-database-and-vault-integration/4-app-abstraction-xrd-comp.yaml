@@ -1,0 +1,442 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: razorapps.example.com
+spec:
+  scope: Namespaced
+  group: example.com
+  names:
+    kind: RazorApp
+    plural: razorapps
+  versions:
+  - name: v1alpha1
+    served: true
+    referenceable: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required: [projectName]
+            properties:
+              projectName: { type: string }
+          status:
+            type: object
+            properties:
+              message:
+                type: string
+---
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: razorapps.example.com
+spec:
+  compositeTypeRef:
+    apiVersion: example.com/v1alpha1
+    kind: RazorApp
+  mode: Pipeline
+  pipeline:
+  - step: create-app
+    functionRef:
+      name: crossplane-contrib-function-kcl
+    input:
+      apiVersion: krm.kcl.dev/v1alpha1
+      kind: KCLInput
+      spec:
+        source: |
+          observed_xr = option("params").oxr
+
+          _service_account = {
+            apiVersion = "v1",
+            kind = "ServiceAccount",
+            metadata = {
+              name = observed_xr.spec.projectName + "-sa"
+            }
+          }
+
+          _deployment = {
+            apiVersion = "apps/v1",
+            kind = "Deployment",
+            metadata = {
+              name = "frontend"
+            },
+            spec = {
+              replicas = 1,
+              selector.matchLabels = {app = "nginx"},
+              template = {
+                metadata.labels = {app = "nginx"},
+                spec.serviceAccountName = observed_xr.spec.projectName + "-sa",
+                spec.containers = [{
+                  name = "nginx",
+                  image = "nginx:latest",
+                  envFrom = [
+                    {secretRef = {name = "database-user-ro"}}
+                  ]
+                }]
+              }
+            }
+          }
+
+          _database = {
+            apiVersion = "mssql.sql.m.crossplane.io/v1alpha1",
+            kind = "Database",
+            metadata = {
+              name = observed_xr.spec.projectName + "-db"
+            }
+            spec = {
+              # Tipp: Setze die deletionPolicy explizit auf Delete, 
+              # da die automatische GC ohne OwnerReference nicht greift
+              # deletionPolicy = "Delete" 
+              providerConfigRef = {
+                name = "mssql-local",
+                kind = "ClusterProviderConfig"
+              }
+            }
+          }
+
+          _database_user_ro = {
+            apiVersion = "mssql.sql.m.crossplane.io/v1alpha1",
+            kind = "User",
+            metadata = {
+              name = observed_xr.spec.projectName + "-readonly-user"
+            }
+            spec = {
+              forProvider = {
+                database = _database.metadata.name
+              },
+              providerConfigRef = {
+                name = "mssql-local",
+                kind = "ClusterProviderConfig"
+              },
+              writeConnectionSecretToRef = {
+                name = observed_xr.spec.projectName + "-readonly-user-secret"
+              }
+            }
+          }
+
+          _database_user_rw = {
+            apiVersion = "mssql.sql.m.crossplane.io/v1alpha1",
+            kind = "User",
+            metadata = {
+              name = observed_xr.spec.projectName + "-readwrite-user"
+            }
+            spec = {
+              forProvider = {
+                database = _database.metadata.name
+              },
+              providerConfigRef = {
+                name = "mssql-local",
+                kind = "ClusterProviderConfig"
+              },
+              writeConnectionSecretToRef = {
+                name = observed_xr.spec.projectName + "-readwrite-user-secret"
+              }
+            }
+          }
+
+          _database_user_ro_grant = {
+            apiVersion = "mssql.sql.m.crossplane.io/v1alpha1",
+            kind = "Grant",
+            metadata = {
+              name = observed_xr.spec.projectName + "-readonly-grant"
+            }
+            spec = {
+              forProvider = {
+                database = _database.metadata.name,
+                user = _database_user_ro.metadata.name,
+                permissions = ["CONNECT", "SELECT"]
+              },
+              providerConfigRef = {
+                name = "mssql-local",
+                kind = "ClusterProviderConfig"
+              }
+            }
+          }
+
+          _database_user_rw_grant = {
+            apiVersion = "mssql.sql.m.crossplane.io/v1alpha1",
+            kind = "Grant",
+            metadata = {
+              name = observed_xr.spec.projectName + "-readwrite-grant"
+            }
+            spec = {
+              forProvider = {
+                database = _database.metadata.name,
+                user = _database_user_rw.metadata.name,
+                permissions = ["CREATE TABLE", "ALTER", "CONNECT", "SELECT", "INSERT", "UPDATE"]  
+              },
+              providerConfigRef = {
+                name = "mssql-local",
+                kind = "ClusterProviderConfig"
+              }
+            }
+          }
+
+          # Generate a policy that allows the ESO to manage secrets under projects/project_name as pushSecret from the provider-sql database
+          _vault_eso_push_policy = {
+            apiVersion = "vault.vault.m.upbound.io/v1alpha1"
+            kind = "Policy"
+            metadata = {
+              name = observed_xr.spec.projectName + "-eso-push-policy"
+            }
+            spec = {
+              forProvider = {
+                name = observed_xr.spec.projectName + "-eso-push-policy",
+                policy = '''
+                  path "projects/data/${observed_xr.spec.projectName}/*" {
+                    capabilities = ["create", "update", "read", "delete", "list"]
+                  }
+                  path "projects/metadata/${observed_xr.spec.projectName}/*" {
+                    capabilities = ["create", "update", "read", "delete", "list"]
+                  }
+                '''
+              },
+              providerConfigRef = {
+                name = "vault-provider-config",
+                kind = "ClusterProviderConfig"
+              }
+            }
+          }
+
+          _vault_eso_token = {
+            apiVersion = "vault.vault.m.upbound.io/v1alpha1"
+            kind = "Token"
+            metadata = {
+              name = observed_xr.spec.projectName + "-eso-token"
+            }
+            spec = {
+              forProvider = {
+                policies = [_vault_eso_push_policy.metadata.name],
+                renewable = True,
+                ttl = "720h"
+              },
+              writeConnectionSecretToRef = {
+                name = observed_xr.spec.projectName + "-eso-token-secret",
+              },
+              providerConfigRef = {
+                name = "vault-provider-config",
+                kind = "ClusterProviderConfig"
+              }
+            }
+          }
+
+          # NOTE: Crossplane needs rbac to create secret stores in the namespace of the composite resource, so either the composite resource needs to be cluster-scoped or you need to add rbac for crossplane in the namespaces of your composite resources. For simplicity we will make the composite resource cluster-scoped in this example, but in a real world scenario you would probably want to keep it namespaced and add the necessary rbac.
+          # Create a secret store in ESO that uses the Vault provider and the token secret created above
+          _eso_secret_store_vault_backend = {
+            apiVersion = "external-secrets.io/v1"
+            kind = "SecretStore"
+            metadata = {
+              name = "eso-secret-store-vault-backend",
+            }
+            spec = {
+              provider = {
+                vault = {
+                  server = "http://vault.vault.svc.cluster.local:8200",
+                  path = "projects",
+                  version = "v2",
+                  auth = {
+                    tokenSecretRef = {
+                      name = _vault_eso_token.spec.writeConnectionSecretToRef.name,
+                      key = "attribute.client_token"
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          _eso_push_secret_db_user_ro = {
+            apiVersion = "external-secrets.io/v1alpha1"
+            kind = "PushSecret"
+            metadata = {
+              name = "push-razor-db-ro-user-to-vault"
+            }
+            spec = {
+              # secret store points to secret engine "projects" in vault
+              secretStoreRefs = [{
+                name = "eso-secret-store-vault-backend",
+                kind = "SecretStore"
+              }],
+              selector = {
+                secret = {
+                  name = _database_user_ro.spec.writeConnectionSecretToRef.name
+                }
+              },
+              data = [{
+                match = {
+                  secretKey = "", # if emtpy, all secret attributes will be pushed
+                  remoteRef = {
+                    remoteKey = observed_xr.spec.projectName + "/database/ro-user"
+                  }
+                }
+              }]
+            }
+          }
+
+          _eso_push_secret_db_user_rw = {
+            apiVersion = "external-secrets.io/v1alpha1"
+            kind = "PushSecret"
+            metadata = {
+              name = "push-razor-db-rw-user-to-vault"
+            }
+            spec = {
+              # secret store points to secret engine "projects" in vault
+              secretStoreRefs = [{
+                name = "eso-secret-store-vault-backend",
+                kind = "SecretStore"
+              }],
+              selector = {
+                secret = {
+                  name = _database_user_rw.spec.writeConnectionSecretToRef.name
+                }
+              },
+              data = [{
+                match = {
+                  secretKey = "", # if emtpy, all secret attributes will be pushed
+                  remoteRef = {
+                    remoteKey = observed_xr.spec.projectName + "/database/rw-user"
+                  }
+                }
+              }]
+            }
+          }
+
+          _vault_policy_app_read = {
+            apiVersion = "vault.vault.m.upbound.io/v1alpha1"
+            kind = "Policy"
+            metadata = {
+              name = observed_xr.spec.projectName + "-app-read-policy"
+            }
+            spec = {
+              forProvider = {
+                name = observed_xr.spec.projectName + "-app-read-policy",
+                policy = '''
+                  path "projects/data/${observed_xr.spec.projectName}/*" {
+                    capabilities = ["read", "list"]
+                  }
+                '''
+              },
+              providerConfigRef = {
+                name = "vault-provider-config",
+                kind = "ClusterProviderConfig"
+              }
+            }
+          }
+
+          _vault_kubernetes_auth_role_app = {
+            apiVersion = "kubernetes.vault.m.upbound.io/v1alpha1"
+            kind = "AuthBackendRole"
+            metadata = {
+              name = observed_xr.spec.projectName + "-app"
+            }
+            spec = {
+              forProvider = {
+                backend = "kubernetes",
+                roleName = observed_xr.spec.projectName + "-app",
+                boundServiceAccountNames = [_service_account.metadata.name],
+                boundServiceAccountNamespaces = [observed_xr.spec.projectName],
+                tokenPolicies = [_vault_policy_app_read.metadata.name],
+                tokenTtl = 3600
+              },
+              providerConfigRef = {
+                name = "vault-provider-config",
+                kind = "ClusterProviderConfig"
+              }
+            }
+          }
+
+          _eso_secret_store_vault_backend_kubernetes_auth_app = {
+            apiVersion = "external-secrets.io/v1"
+            kind = "SecretStore"
+            metadata = {
+              name = "eso-secret-store-vault-backend-kubernetes-auth-app",
+            }
+            spec = {
+              provider = {
+                vault = {
+                  server = "http://vault.vault.svc.cluster.local:8200",
+                  path = "projects",
+                  version = "v2",
+                  auth = {
+                    kubernetes = {
+                      mountPath = "kubernetes",
+                      role = _vault_kubernetes_auth_role_app.spec.forProvider.roleName,
+                      serviceAccountRef = {
+                        name = _service_account.metadata.name,
+                        namespace = observed_xr.spec.projectName
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          _eso_secret_db_credentials_ro = {
+            apiVersion = "external-secrets.io/v1"
+            kind = "ExternalSecret"
+            metadata = {
+              name = "eso-secret-db-credentials-ro"
+            }
+            spec = {
+              refreshInterval = "15s",
+              secretStoreRef = {
+                name = "eso-secret-store-vault-backend-kubernetes-auth-app",
+                kind = "SecretStore"
+              },
+              target = {
+                name = "database-user-ro",
+                creationPolicy = "Owner"
+              },
+              dataFrom = [{
+                extract = {
+                  key = observed_xr.spec.projectName + "/database/ro-user"
+                }
+              }]
+            }
+          }
+
+          _eso_secret_db_credentials_rw = {
+            apiVersion = "external-secrets.io/v1"
+            kind = "ExternalSecret"
+            metadata = {
+              name = "eso-secret-db-credentials-rw"
+            }
+            spec = {
+              refreshInterval = "15s",
+              secretStoreRef = {
+                name = "eso-secret-store-vault-backend-kubernetes-auth-app",
+                kind = "SecretStore"
+              },
+              target = {
+                name = "database-user-rw",
+                creationPolicy = "Owner"
+              },
+              dataFrom = [{
+                extract = {
+                  key = observed_xr.spec.projectName + "/database/rw-user"
+                }
+              }]
+            }
+          }
+
+          items = [
+            _service_account,
+            _deployment,
+            _database,
+            _database_user_ro,
+            _database_user_rw,
+            _database_user_ro_grant,
+            _database_user_rw_grant,
+            _vault_eso_push_policy,
+            _vault_eso_token,
+            _eso_secret_store_vault_backend,
+            _eso_push_secret_db_user_ro,
+            _eso_push_secret_db_user_rw,
+            _vault_policy_app_read,
+            _vault_kubernetes_auth_role_app,
+            _eso_secret_store_vault_backend_kubernetes_auth_app,
+            _eso_secret_db_credentials_ro,
+            _eso_secret_db_credentials_rw
+          ]

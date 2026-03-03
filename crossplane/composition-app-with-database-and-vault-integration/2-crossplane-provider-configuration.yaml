@@ -1,0 +1,53 @@
+# Configure provider-vault
+apiVersion: v1
+kind: Secret
+metadata:
+  name: vault-creds
+  namespace: crossplane-system
+type: Opaque
+stringData:
+  credentials: '{"token": "root"}'
+---
+apiVersion: vault.m.upbound.io/v1beta1
+kind: ClusterProviderConfig
+metadata:
+  name: vault-provider-config
+spec:
+  address: http://vault.vault.svc.cluster.local:8200
+  credentials:
+    source: Secret
+    secretRef:
+      namespace: crossplane-system
+      name: vault-creds
+      key: credentials
+---
+# Configure provider-sql
+# create secret to connect
+apiVersion: v1
+kind: Secret
+metadata:
+  name: mssql-conn
+  namespace: crossplane-system
+type: Opaque
+stringData:
+  # mssql cluster can be reached by container name as it was added to the docker kind network
+  endpoint: mssql-test
+  port: "1433"
+  username: sa
+  password: YourStrong!Passw0rd
+---
+# configure the provider
+# need to use the "m." group prefix for the provider config, otherwise the provider won't be found database managed resource
+# which is namespaced and also in the "m." group.
+# need to use ClusterProviderConfig as we want to share this config for our whole product line applications
+# this is the only resource that will work in that use case out of the "m." group
+apiVersion: mssql.sql.m.crossplane.io/v1alpha1
+kind: ClusterProviderConfig
+metadata:
+  name: mssql-local
+spec:
+  credentials:
+    source: MSSQLConnectionSecret
+    connectionSecretRef:
+      name: mssql-conn
+      namespace: crossplane-system
