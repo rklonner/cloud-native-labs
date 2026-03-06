@@ -48,14 +48,16 @@ catalog:
       rules:
         - allow: [Template]
 
-    # Razor App template
-    - type: file
-      target: ./examples/razor-app/template.yaml
-      rules:
-        - allow: [Template]
+    # # Local Razor App template
+    # - type: file
+    #   target: ./examples/razor-app/template.yaml
+    #   rules:
+    #     - allow: [Template]
 
     - type: url
-      target: https://github.com/backstage/backstage/blob/master/packages/catalog-model/examples/all.yaml
+      target: https://github.com/rklonner/cloud-native-labs/blob/main/backstage/backstage-app-scaffolder/templates/razor-app/template.yaml
+      rules:
+        - allow: [Template]
 
     # Local example organizational data
     - type: file
