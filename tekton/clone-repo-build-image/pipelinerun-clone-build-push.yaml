@@ -1,0 +1,24 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: clone-build-
+spec:
+  pipelineRef:
+    name: clone-build
+  podTemplate:
+    securityContext:
+      fsGroup: 65532
+  workspaces:
+  - name: source
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+  params:
+  - name: repo-url
+    value: https://github.com/tektoncd/website.git
+  - name: image-name
+    value: my-own-registry.io/my-repo/my-image
