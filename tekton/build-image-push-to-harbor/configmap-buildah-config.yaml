@@ -1,8 +1,0 @@
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: buildah-registries-config
-data:
-  registries.conf: |
-    unqualified-search-registries = ["docker.io", "quay.io"]
-    short-name-mode = "permissive"
