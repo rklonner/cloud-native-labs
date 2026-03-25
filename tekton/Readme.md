@@ -12,6 +12,9 @@ kubectl config use-context kind-kind
 kubectl apply --filename \
 https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
 
+# Install dashboard in read/write mode
+kubectl apply --filename https://infra.tekton.dev/tekton-releases/dashboard/latest/release-full.yaml
+
 # Install Tekton CLI (optional)
 curl -LO https://github.com/tektoncd/cli/releases/download/v0.44.0/tektoncd-cli-0.44.0_Linux-64bit.deb
 sudo dpkg -i tektoncd-cli-0.44.0_Linux-64bit.deb
