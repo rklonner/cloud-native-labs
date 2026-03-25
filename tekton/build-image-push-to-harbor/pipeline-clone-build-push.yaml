@@ -1,7 +1,7 @@
 apiVersion: tekton.dev/v1beta1
 kind: Pipeline
 metadata:
-  name: clone-build
+  name: clone-build-push
 spec:
   description: | 
     This pipeline clones a git repo, then builds a container image from the source.
@@ -9,6 +9,9 @@ spec:
   - name: repo-url
     type: string
     description: The git repo URL to clone from.
+  - name: dockerfile
+    type: string
+    description: The path to the Dockerfile to build the image from.
   - name: image-name
     type: string
     description: The name of the image to build.
@@ -17,6 +20,9 @@ spec:
     description: | 
       This workspace contains the cloned repo files, so they can be read by the
       next task.
+  - name: dockerconfig
+    description: | 
+      This workspace contains the Docker configfile
   tasks:
   - name: fetch-source
     taskRef:
@@ -34,9 +40,13 @@ spec:
     params:
     - name: IMAGE
       value: $(params.image-name)
+    - name: DOCKERFILE
+      value: $(params.dockerfile)
     # Skip tls verification as we are pushing to a local registry with self-signed certs
     - name: TLSVERIFY
       value: "false"
     workspaces:
     - name: source
       workspace: source
+    - name: dockerconfig
+      workspace: dockerconfig

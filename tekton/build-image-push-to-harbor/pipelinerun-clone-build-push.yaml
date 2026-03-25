@@ -1,10 +1,10 @@
 apiVersion: tekton.dev/v1beta1
 kind: PipelineRun
 metadata:
-  generateName: clone-build-
+  generateName: clone-build-push-
 spec:
   pipelineRef:
-    name: clone-build
+    name: clone-build-push
   podTemplate:
     securityContext:
       fsGroup: 65532
@@ -25,6 +25,8 @@ spec:
         path: config.json       # Das ist der Dateiname, den der Buildah-Task im Container erwartet
   params:
   - name: repo-url
-    value: https://github.com/tektoncd/website.git
+    value: https://github.com/rklonner/cloud-native-labs.git
+  - name: dockerfile
+    value: ./tekton/build-image-push-to-harbor/Dockerfile
   - name: image-name
-    value: harbor-core.harbor.svc.cluster.local/library/my-image
+    value: harbor.harbor.svc.cluster.local/library/my-image
