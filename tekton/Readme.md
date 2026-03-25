@@ -20,6 +20,12 @@ sudo dpkg -i tektoncd-cli-0.44.0_Linux-64bit.deb
 kubectl -n tekton-pipelines get pods --watch
 ```
 
+## Usage
+```bash
+# Make dashboard available locally
+kubectl port-forward -n tekton-pipelines service/tekton-dashboard 9097:9097
+```
+
 ## Useful commands
 ````bash
 # Watch logs of last pipeline run
