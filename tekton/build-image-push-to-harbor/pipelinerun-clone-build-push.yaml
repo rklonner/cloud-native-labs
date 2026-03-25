@@ -1,0 +1,30 @@
+apiVersion: tekton.dev/v1beta1
+kind: PipelineRun
+metadata:
+  generateName: clone-build-
+spec:
+  pipelineRef:
+    name: clone-build
+  podTemplate:
+    securityContext:
+      fsGroup: 65532
+  workspaces:
+  - name: source
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+  - name: dockerconfig
+    secret:
+      secretName: harbor-creds
+      items:
+      - key: .dockerconfigjson  # Das ist der Key, den 'kubectl create secret docker-registry' erzeugt
+        path: config.json       # Das ist der Dateiname, den der Buildah-Task im Container erwartet
+  params:
+  - name: repo-url
+    value: https://github.com/tektoncd/website.git
+  - name: image-name
+    value: harbor-core.harbor.svc.cluster.local/library/my-image

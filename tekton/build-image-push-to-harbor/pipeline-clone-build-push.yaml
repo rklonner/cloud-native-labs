@@ -1,0 +1,42 @@
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: clone-build
+spec:
+  description: | 
+    This pipeline clones a git repo, then builds a container image from the source.
+  params:
+  - name: repo-url
+    type: string
+    description: The git repo URL to clone from.
+  - name: image-name
+    type: string
+    description: The name of the image to build.
+  workspaces:
+  - name: source
+    description: | 
+      This workspace contains the cloned repo files, so they can be read by the
+      next task.
+  tasks:
+  - name: fetch-source
+    taskRef:
+      name: git-clone
+    workspaces:
+    - name: output
+      workspace: source
+    params:
+    - name: url
+      value: $(params.repo-url)
+  - name: build-image
+    runAfter: ["fetch-source"]
+    taskRef:
+      name: buildah  
+    params:
+    - name: IMAGE
+      value: $(params.image-name)
+    # Skip tls verification as we are pushing to a local registry with self-signed certs
+    - name: TLSVERIFY
+      value: "false"
+    workspaces:
+    - name: source
+      workspace: source
