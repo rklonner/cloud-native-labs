@@ -45,7 +45,7 @@ kubectl apply -f pipeline-clone-build-push.yaml
 
 ```bash
 # We specify the source public git repo and a target image name as input.
-kuebctl create -f pipelinerun-clone-build-push.yaml
+kubectl create -f pipelinerun-clone-build-push.yaml
 
 # We can follow the pipeline logs by
 tkn pipelinerun logs --last -f
