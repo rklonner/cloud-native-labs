@@ -36,3 +36,15 @@ kubectl create -f pipelinerun-clone-build-push.yaml
 # We can follow the pipeline logs by
 tkn pipelinerun logs --last -f
 ```
+
+# TODO: Deploy pod and let kubelet fetch the image from habor
+
+currently tls issue
+```bash
+k apply -f pod.yaml
+
+k describe  pods  my-app-pod
+
+  Warning  Failed                           11m (x4 over 13m)     kubelet            spec.containers{my-app}: Failed to
+pull image "harbor.harbor.svc.cluster.local/library/my-image:latest": failed to pull and unpack image "harbor.harbor.svc.cluster.local/library/my-image:latest": failed to resolve reference "harbor.harbor.svc.cluster.local/library/my-image:latest": failed to do request: Head "https://harbor.harbor.svc.cluster.local/v2/library/my-image/manifests/latest": net/http: TLS handshake timeout
+```
