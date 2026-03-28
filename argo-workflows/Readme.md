@@ -1,6 +1,6 @@
 # Argo Workflows
 
-## Install helm chart in kind cluster
+## Install in kind cluster
 ```bash
 # Create kind cluster
 kind create cluster
