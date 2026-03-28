@@ -10,9 +10,9 @@ spec:
     - name: repo-url
       value: "https://github.com/rklonner/cloud-native-labs.git"
     - name: dockerfile
-      value: "tekton/build-image-push-to-harbor/Dockerfile"
+      value: "argo-workflows/clone-build/Dockerfile"
     - name: image-name
-      value: "my-app:latest"
+      value: "example-registry.com/my-app:latest"
 
   volumeClaimTemplates:
   - metadata:
