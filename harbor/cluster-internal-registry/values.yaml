@@ -1,0 +1,9 @@
+expose:
+  type: clusterIP
+  tls:
+    enabled: true
+    auto:
+      commonName: "harbor.harbor.svc.cluster.local" # internal dns name
+externalURL: https://harbor.harbor.svc.cluster.local
+persistence:
+  enabled: true
