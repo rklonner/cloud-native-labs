@@ -8,7 +8,7 @@
 **Prerequisites**:
 * Tekton is setup in your cluster (see [Installation](../Readme.md#install-helm-chart-in-kind-cluster))
 * Tekton CLI is installed (see [Installation](../Readme.md#install-helm-chart-in-kind-cluster))
-* Habor is installed for usage as cluster internal registry (see [Installation](../../harbor/cluster-internal-registry/Readme.md))
+* Harbor is installed for usage as cluster internal registry (see [Installation](../../harbor/cluster-internal-registry/Readme.md))
 
 ## Prepare environment
 
@@ -35,16 +35,21 @@ kubectl create -f pipelinerun-clone-build-push.yaml
 
 # We can follow the pipeline logs by
 tkn pipelinerun logs --last -f
+
+# Verify in the Harbor UI that the image is uploaded
 ```
 
-# TODO: Deploy pod and let kubelet fetch the image from habor
+# Deploy a pod with the new image from Harbor
 
-currently tls issue
+Kubelet will be able to fetch image if Harbor service and Harbor nginx root CA was configured as described in the Harbor instructions.
+
 ```bash
-k apply -f pod.yaml
+# Deploy pod, it refers to a imagePullSecrets named 'harbor-creds' that is setup during Harbor configuration
+kubectl apply -f pod-my-app.yaml
 
-k describe  pods  my-app-pod
+# Check if the pod run successfully and prints out a message
+kubectl logs pods/my-app-pod
 
-  Warning  Failed                           11m (x4 over 13m)     kubelet            spec.containers{my-app}: Failed to
-pull image "harbor.harbor.svc.cluster.local/library/my-image:latest": failed to pull and unpack image "harbor.harbor.svc.cluster.local/library/my-image:latest": failed to resolve reference "harbor.harbor.svc.cluster.local/library/my-image:latest": failed to do request: Head "https://harbor.harbor.svc.cluster.local/v2/library/my-image/manifests/latest": net/http: TLS handshake timeout
+Output:
+Hello World!
 ```

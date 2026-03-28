@@ -6,7 +6,5 @@ spec:
   containers:
   - name: my-app
     image: harbor.harbor.svc.cluster.local/library/my-image:latest
-    ports:
-    - containerPort: 80 # Falls deine App auf einem Port lauscht
   imagePullSecrets:
   - name: harbor-creds
