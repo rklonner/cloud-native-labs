@@ -29,4 +29,4 @@ spec:
   - name: dockerfile
     value: ./tekton/build-image-push-to-harbor/Dockerfile
   - name: image-name
-    value: harbor.harbor.svc.cluster.local/library/my-image
+    value: harbor.harbor.svc.cluster.local/library/my-app:latest
