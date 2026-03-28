@@ -18,7 +18,8 @@ k -n argo edit cm workflow-controller-configmap
 # remove artifactrepository "test" and save
 k -n argo rollout restart deployment workflow-controller
 
-# Apply additional permissions
+# Apply additional permissions to fix
+`wait: Error (exit code 64): workflowtaskresults.argoproj.io is forbidden: User "system:serviceaccount:default:default" cannot create resource "workflowtaskresults" in API group "argoproj.io" in the namespace "default"`
 kubectl apply -f argo-rbac.yaml
 
 # Verify that Workflows is running
