@@ -9,4 +9,4 @@ spec:
     ports:
     - containerPort: 80 # Falls deine App auf einem Port lauscht
   imagePullSecrets:
-  - name: harbor-pull-secret
+  - name: harbor-creds
