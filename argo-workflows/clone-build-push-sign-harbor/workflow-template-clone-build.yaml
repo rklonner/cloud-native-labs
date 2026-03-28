@@ -1,0 +1,137 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: buildah-git-template
+spec:
+  # Standardwerte für die Parameter (können beim Aufruf überschrieben werden)
+  arguments:
+    parameters:
+    - name: repo-url
+    - name: dockerfile
+    - name: image-name
+
+  volumeClaimTemplates:
+  - metadata:
+      name: workdir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+
+  templates:
+  - name: main
+    steps:
+    - - name: clone
+        template: clone-repo
+    - - name: build
+        template: build-image
+
+  - name: clone-repo
+    script:
+      image: alpine/git
+      workingDir: /workspace
+      command: [sh]
+      source: |
+        set -e
+        git clone --depth 1 "{{workflow.parameters.repo-url}}" .
+      volumeMounts:
+      - name: workdir
+        mountPath: /workspace
+
+  - name: build-image
+    script:
+      image: quay.io/buildah/stable:latest
+      workingDir: /workspace
+      command: [sh]
+      env:
+      - name: COSIGN_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: cosign-keys
+            key: cosign.password
+      - name: REGISTRY_USER
+        valueFrom:
+          secretKeyRef:
+            name: cosign-harbor-login
+            key: username
+      - name: REGISTRY_PASSWORD
+        valueFrom:
+          secretKeyRef:
+            name: cosign-harbor-login
+            key: password
+      source: |
+        set -e
+        # Cosign Installation (falls nicht im Image vorhanden)
+        COSIGN_VERSION="3.0.5"
+        ARCH=$(uname -m)
+        if [ "$ARCH" = "x86_64" ]; then
+            COSIGN_ARCH="amd64"
+        elif [ "$ARCH" = "aarch64" ]; then
+            COSIGN_ARCH="arm64"
+        else
+            COSIGN_ARCH="amd64" # Fallback
+        fi
+
+        echo "Downloading cosign for ${COSIGN_ARCH}..."
+
+        # Download mit expliziter URL (Anführungszeichen sind wichtig!)
+        curl -L "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-${COSIGN_ARCH}" -o /usr/local/bin/cosign
+        chmod +x /usr/local/bin/cosign
+
+        # config to ensure to allow short name resolution for buildah
+        mkdir -p /etc/containers
+        echo 'unqualified-search-registries = ["docker.io", "quay.io"]' > /etc/containers/registries.conf
+        echo 'short-name-mode = ""' >> /etc/containers/registries.conf
+
+        buildah bud --storage-driver=vfs \
+          -t "{{workflow.parameters.image-name}}" \
+          -f "{{workflow.parameters.dockerfile}}" .
+
+        # Push unter Verwendung der gemounteten Credentials
+        # --authfile zeigt auf die Datei im Secret-Volume
+        buildah push --storage-driver=vfs \
+          --authfile /etc/buildah-auth/.dockerconfigjson \
+          --tls-verify=false \
+          --digestfile=/workspace/digest.txt \
+          "{{workflow.parameters.image-name}}"
+
+        echo "Digest file created at /workspace/digest.txt"
+        cat /workspace/digest.txt
+        DIGEST=$(cat /workspace/digest.txt)
+        IMAGE_BASE=$(echo "{{workflow.parameters.image-name}}" | cut -d: -f1)
+        IMAGE_WITH_DIGEST="${IMAGE_BASE}@${DIGEST}"
+
+        echo "Signing image..."
+        # harbor 2.14 is not recognizing the new cosign bundle format in v3.+,
+        # so we use --new-bundle-format=false --use-signing-config=false
+        cosign sign --key /etc/cosign/cosign.key \
+          --allow-insecure-registry=true \
+          --registry-username="$REGISTRY_USER" \
+          --registry-password="$REGISTRY_PASSWORD" \
+          --new-bundle-format=false \
+          --use-signing-config=false \
+          --tlog-upload=false \
+          "$IMAGE_WITH_DIGEST"
+
+        #cosign verify --key /etc/cosign/cosign.pub \
+        #  --allow-insecure-registry=true \
+        #  "{{workflow.parameters.image-name}}"
+      securityContext:
+        privileged: true
+      volumeMounts:
+      - name: workdir
+        mountPath: /workspace
+      - name: registry-auth
+        mountPath: /etc/buildah-auth
+        readOnly: true
+      - name: cosign-key
+        mountPath: /etc/cosign
+        readOnly: true
+    volumes:
+    - name: registry-auth
+      secret:
+        secretName: harbor-creds
+    - name: cosign-key
+      secret:
+        secretName: cosign-keys

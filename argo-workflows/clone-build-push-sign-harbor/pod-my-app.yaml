@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-app-pod
+spec:
+  containers:
+  - name: my-app
+    image: harbor.harbor.svc.cluster.local/library/my-image:latest
+  imagePullSecrets:
+  - name: harbor-creds
