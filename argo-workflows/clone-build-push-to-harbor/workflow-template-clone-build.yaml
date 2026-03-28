@@ -1,0 +1,76 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: buildah-git-template
+spec:
+  # Standardwerte für die Parameter (können beim Aufruf überschrieben werden)
+  arguments:
+    parameters:
+    - name: repo-url
+    - name: dockerfile
+    - name: image-name
+
+  volumeClaimTemplates:
+  - metadata:
+      name: workdir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+
+  templates:
+  - name: main
+    steps:
+    - - name: clone
+        template: clone-repo
+    - - name: build
+        template: build-image
+
+  - name: clone-repo
+    script:
+      image: alpine/git
+      workingDir: /workspace
+      command: [sh]
+      source: |
+        set -e
+        git clone --depth 1 "{{workflow.parameters.repo-url}}" .
+      volumeMounts:
+      - name: workdir
+        mountPath: /workspace
+
+  - name: build-image
+    script:
+      image: quay.io/buildah/stable:latest
+      workingDir: /workspace
+      command: [sh]
+      source: |
+        set -e
+
+        # 1. Erstelle die Konfiguration, um Short-Name Resolution zu erlauben
+        mkdir -p /etc/containers
+        echo 'unqualified-search-registries = ["docker.io", "quay.io"]' > /etc/containers/registries.conf
+        echo 'short-name-mode = ""' >> /etc/containers/registries.conf
+
+        buildah bud --storage-driver=vfs \
+          -t "{{workflow.parameters.image-name}}" \
+          -f "{{workflow.parameters.dockerfile}}" .
+
+        # Push unter Verwendung der gemounteten Credentials
+        # --authfile zeigt auf die Datei im Secret-Volume
+        buildah push --storage-driver=vfs \
+          --authfile /etc/buildah-auth/.dockerconfigjson \
+          --tls-verify=false \
+          "{{workflow.parameters.image-name}}"
+      securityContext:
+        privileged: true
+      volumeMounts:
+      - name: workdir
+        mountPath: /workspace
+      - name: registry-auth
+        mountPath: /etc/buildah-auth
+        readOnly: true
+    volumes:
+    - name: registry-auth
+      secret:
+        secretName: harbor-creds

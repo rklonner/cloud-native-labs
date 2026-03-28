@@ -1,0 +1,34 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: build-run-
+spec:
+  entrypoint: call-template
+  serviceAccountName: default
+  
+  volumeClaimTemplates:
+  - metadata:
+      name: workdir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+
+  arguments:
+    parameters:
+    - name: repo-url
+      value: "https://github.com/rklonner/cloud-native-labs.git"
+    - name: dockerfile
+      value: "tekton/build-image-push-to-harbor/Dockerfile"
+    - name: image-name
+      value: "harbor.harbor.svc.cluster.local/library/my-app:latest"
+
+  templates:
+  - name: call-template
+    steps:
+    - - name: run-build
+        templateRef:
+          name: buildah-git-template
+          template: main
+
