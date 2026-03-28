@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: git-params-
+spec:
+  entrypoint: clone-with-params
+  arguments:
+    parameters:
+    - name: repo-url
+      value: "https://github.com/rklonner/cloud-native-labs.git"
+    - name: branch
+      value: "main"
+
+  templates:
+  - name: clone-with-params
+    inputs:
+      parameters:
+      - name: repo-url
+      - name: branch
+      artifacts:
+      - name: source
+        path: /src
+        git:
+          repo: "{{inputs.parameters.repo-url}}"
+          revision: "{{inputs.parameters.branch}}"
+          depth: 1
+    container:
+      image: alpine/git
+      command: [ls, -lh, /src]
