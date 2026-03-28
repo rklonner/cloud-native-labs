@@ -1,0 +1,63 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: git-buildah-script-
+spec:
+  entrypoint: main
+  serviceAccountName: default
+  arguments:
+    parameters:
+    - name: repo-url
+      value: "https://github.com/rklonner/cloud-native-labs.git"
+    - name: dockerfile
+      value: "tekton/build-image-push-to-harbor/Dockerfile"
+    - name: image-name
+      value: "my-app:latest"
+
+  volumeClaimTemplates:
+  - metadata:
+      name: workdir
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+
+  templates:
+  - name: main
+    steps:
+    - - name: clone
+        template: clone-repo
+    - - name: build
+        template: build-image
+
+  - name: clone-repo
+    # 'script' ersetzt 'container' mit 'command'/'args'
+    script:
+      image: alpine/git
+      workingDir: /workspace
+      command: [sh]
+      source: |
+        set -e
+        echo "Cloning {{workflow.parameters.repo-url}}..."
+        git clone --depth 1 "{{workflow.parameters.repo-url}}" .
+        ls -la
+      volumeMounts:
+      - name: workdir
+        mountPath: /workspace
+
+  - name: build-image
+    script:
+      image: quay.io/buildah/stable:latest
+      workingDir: /workspace
+      command: [sh]
+      source: |
+        set -e
+        buildah bud --storage-driver=vfs \
+          -t "{{workflow.parameters.image-name}}" \
+          -f "{{workflow.parameters.dockerfile}}" .
+      securityContext:
+        privileged: true
+      volumeMounts:
+      - name: workdir
+        mountPath: /workspace
