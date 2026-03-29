@@ -24,7 +24,7 @@ docker exec -it kind-control-plane sh -c "echo '$SVC_IP harbor.harbor.svc.cluste
 # Extract ca certificate from nginx pod created during helm installation
 kubectl get secret harbor-nginx -n harbor -o jsonpath="{.data['ca\.crt']}" | base64 -d > harbor-ca.crt
 # Optional test cacert from a pod when harbor-internal is copied an registered
-curl -v --cacert /tmp/harbor-internal.crt https://harbor.harbor.svc.cluster.local
+# curl -v --cacert /tmp/harbor-internal.crt https://harbor.harbor.svc.cluster.local
 # Copy it into the kind control plane node
 docker cp harbor-ca.crt kind-control-plane:/usr/local/share/ca-certificates/harbor-ca.crt
 # Update certificates and restart containerd
@@ -34,7 +34,7 @@ docker exec kind-control-plane systemctl restart containerd
 # Test clusterIP registration for hostname and tls settings by doing an https request
 docker exec -it kind-control-plane curl -v  https://harbor.harbor.svc.cluster.local
 # Test on kind node to pull an Harbor image with crictl
-docker exec kind-control-plane crictl pull harbor.harbor.svc.cluster.local/library/my-image:latest
+# docker exec kind-control-plane crictl pull harbor.harbor.svc.cluster.local/library/my-image:latest
 
 Output:
 Image is up to date for sha256:ce8eb5cb9189eb681fae2a67f53c3382e8f6f4775712aec01b346d562f5e7a61
@@ -46,7 +46,12 @@ kubectl port-forward svc/harbor -n harbor 8080:443
 http://localhost:8080
 Username: admin
 Passwort: Harbor12345
-```
 
-# test harbor-ca file with curl
-curl -v --cacert /tmp/harbor-internal.crt https://harbor.harbor.svc.cluster.local
+# Optional:
+# Enable image scan and sbom generation for project `libraries`
+* In Harbor UI go to project 'library'
+* Go to Configuration
+* Enable Automatically scan images on push
+* Enable Automatically generate SBOM on push
+* Click 'Save'
+```
