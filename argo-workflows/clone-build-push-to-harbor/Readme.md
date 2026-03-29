@@ -58,21 +58,3 @@ kubectl logs pods/my-app-pod
 Output:
 Hello World!
 ```
-
-## Trigger workflow from template
-```bash
-# Install workflow template
-kubectl apply -f workflow-template-clone-build.yaml
-
-# Trigger workflow for Dockerfile within this folder
-kubectl create -f workflow-clone-build.yaml
-
-# Watch logs of workflow
-argo logs @latest --follow
-
-# Trigger workflow to build an arbitrary image like argo cd diff preview
-kubectl create -f workflow-clone-build-argocd-diff-preview.yaml
-
-# Watch logs of workflow
-argo logs @latest --follow
-```
