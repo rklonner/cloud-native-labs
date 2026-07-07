@@ -1,7 +1,7 @@
 # Crossplane - Abstract an application and infrastructure in a composition
 
 **Demonstrate**:
-* How to innstall and configure provider-vault, rovider-sql and External Secrets Operator
+* How to innstall and configure provider-vault, provider-sql and External Secrets Operator
 * How to use namespaced apis "m." of providers
 * How to abstract a product line called `RazorApps` with XRD and Composition (KCL)
 * How to instanciate different projects of this product line by a simple XR
@@ -146,6 +146,26 @@ spt_monitor
 
 (4 rows affected)
 
+# Try to create a table with read only user
+docker exec -it $DB_ENDPOINT /opt/mssql-tools18/bin/sqlcmd -S localhost,$DB_PORT -U $RO_USER -P $RO_PW -d blade-db -C -Q "CREATE TABLE UnauthorizedTable (ID INT PRIMARY KEY, Data NVARCHAR(50))"
+
+# Output:
+Msg 262, Level 14, State 1, Server bcc99289344c, Line 1
+CREATE TABLE permission denied in database 'master'.
+
+# Retrieve the credentials of the database read-write user
+# 
+vault kv get projects/blade/database/rw-user
+
+# Retrieve credentials and try to read sys tables (should work)
+DB_ENDPOINT=$(vault kv get -field=endpoint projects/blade/database/rw-user)
+DB_PORT=$(vault kv get -field=port projects/blade/database/rw-user)
+RW_USER=$(vault kv get -field=username projects/blade/database/rw-user)
+RW_PW=$(vault kv get -field=password projects/blade/database/rw-user)
+
+# Try to create a table with read write user
+docker exec -it $DB_ENDPOINT /opt/mssql-tools18/bin/sqlcmd -S localhost,$DB_PORT -U $RW_USER -P $RW_PW -d blade-db -C -Q "CREATE TABLE UnauthorizedTable (ID INT PRIMARY KEY, Data NVARCHAR(50))"
+
 # Let's check the kubernetes auth role
 vault list auth/kubernetes/role
 
@@ -197,7 +217,7 @@ kubectl -n blade exec deployments/frontend -- printenv | grep -E "endpoint|port|
 ```bash
 # Create the aurora application
 kubectl create ns aurora
-kubectl apply -f 6-aurora-app.yaml
+kubectl apply -f 6-xr-aurora.yaml
 
 # It is left to the user to explore the created resources like in the previous chapter
 ```
