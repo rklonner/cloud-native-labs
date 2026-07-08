@@ -12,7 +12,7 @@ kind: Provider
 metadata:
   name: provider-sql
 spec:
-  package: xpkg.upbound.io/crossplane-contrib/provider-sql:v0.14.0
+  package: xpkg.upbound.io/crossplane-contrib/provider-sql:v0.15.0
 ---
 # Install KCL function for composition pipeline
 apiVersion: pkg.crossplane.io/v1
