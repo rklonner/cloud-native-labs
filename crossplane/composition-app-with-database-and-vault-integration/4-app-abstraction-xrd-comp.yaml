@@ -85,9 +85,6 @@ spec:
               name = observed_xr.spec.projectName + "-db"
             }
             spec = {
-              # Tipp: Setze die deletionPolicy explizit auf Delete, 
-              # da die automatische GC ohne OwnerReference nicht greift
-              # deletionPolicy = "Delete" 
               providerConfigRef = {
                 name = "mssql-local",
                 kind = "ClusterProviderConfig"
@@ -103,6 +100,9 @@ spec:
             }
             spec = {
               forProvider = {
+                # Keep the server login anchored to master so deleting the app
+                # database does not leave a stale default database on re-create.
+                loginDatabase = "master",
                 database = _database.metadata.name
               },
               providerConfigRef = {
@@ -123,6 +123,9 @@ spec:
             }
             spec = {
               forProvider = {
+                # Keep the server login anchored to master so deleting the app
+                # database does not leave a stale default database on re-create.
+                loginDatabase = "master",
                 database = _database.metadata.name
               },
               providerConfigRef = {
@@ -169,6 +172,106 @@ spec:
               providerConfigRef = {
                 name = "mssql-local",
                 kind = "ClusterProviderConfig"
+              }
+            }
+          }
+
+          _usage_database_used_by_ro_user = {
+            apiVersion = "protection.crossplane.io/v1beta1",
+            kind = "Usage",
+            metadata = {
+              name = observed_xr.spec.projectName + "-db-used-by-readonly-user"
+            }
+            spec = {
+              replayDeletion = True,
+              of = {
+                apiVersion = _database.apiVersion,
+                kind = _database.kind,
+                resourceRef = {
+                  name = _database.metadata.name
+                }
+              },
+              by = {
+                apiVersion = _database_user_ro.apiVersion,
+                kind = _database_user_ro.kind,
+                resourceRef = {
+                  name = _database_user_ro.metadata.name
+                }
+              }
+            }
+          }
+
+          _usage_database_used_by_rw_user = {
+            apiVersion = "protection.crossplane.io/v1beta1",
+            kind = "Usage",
+            metadata = {
+              name = observed_xr.spec.projectName + "-db-used-by-readwrite-user"
+            }
+            spec = {
+              replayDeletion = True,
+              of = {
+                apiVersion = _database.apiVersion,
+                kind = _database.kind,
+                resourceRef = {
+                  name = _database.metadata.name
+                }
+              },
+              by = {
+                apiVersion = _database_user_rw.apiVersion,
+                kind = _database_user_rw.kind,
+                resourceRef = {
+                  name = _database_user_rw.metadata.name
+                }
+              }
+            }
+          }
+
+          _usage_ro_user_used_by_grant = {
+            apiVersion = "protection.crossplane.io/v1beta1",
+            kind = "Usage",
+            metadata = {
+              name = observed_xr.spec.projectName + "-readonly-user-used-by-grant"
+            }
+            spec = {
+              replayDeletion = True,
+              of = {
+                apiVersion = _database_user_ro.apiVersion,
+                kind = _database_user_ro.kind,
+                resourceRef = {
+                  name = _database_user_ro.metadata.name
+                }
+              },
+              by = {
+                apiVersion = _database_user_ro_grant.apiVersion,
+                kind = _database_user_ro_grant.kind,
+                resourceRef = {
+                  name = _database_user_ro_grant.metadata.name
+                }
+              }
+            }
+          }
+
+          _usage_rw_user_used_by_grant = {
+            apiVersion = "protection.crossplane.io/v1beta1",
+            kind = "Usage",
+            metadata = {
+              name = observed_xr.spec.projectName + "-readwrite-user-used-by-grant"
+            }
+            spec = {
+              replayDeletion = True,
+              of = {
+                apiVersion = _database_user_rw.apiVersion,
+                kind = _database_user_rw.kind,
+                resourceRef = {
+                  name = _database_user_rw.metadata.name
+                }
+              },
+              by = {
+                apiVersion = _database_user_rw_grant.apiVersion,
+                kind = _database_user_rw_grant.kind,
+                resourceRef = {
+                  name = _database_user_rw_grant.metadata.name
+                }
               }
             }
           }
@@ -429,6 +532,10 @@ spec:
             _database_user_rw,
             _database_user_ro_grant,
             _database_user_rw_grant,
+            _usage_database_used_by_ro_user,
+            _usage_database_used_by_rw_user,
+            _usage_ro_user_used_by_grant,
+            _usage_rw_user_used_by_grant,
             _vault_eso_push_policy,
             _vault_eso_token,
             _eso_secret_store_vault_backend,
