@@ -109,6 +109,10 @@ Now, as the basic infrastructure and platform is setup, let's create 2 example a
 Operational note:
 * The composition creates Crossplane `Usage` objects to enforce MSSQL teardown order: `Grant -> User -> Database`.
 * This was validated with a full `blade` re-create and delete test so the database is not deleted before the users and grants are removed.
+* The composition also creates Crossplane `Usage` objects for the Vault/ESO path so teardown keeps the auth chain and the source DB connection secrets alive long enough for `PushSecret` cleanup:
+  `PushSecret -> User`, `PushSecret -> SecretStore`, `SecretStore -> Token`.
+* The Vault policy used by the ESO push token explicitly allows `auth/token/lookup-self` and app-scoped `projects/...` paths so ESO can validate the Vault token and delete pushed KV entries during teardown.
+* This was validated with a full `blade` re-create and delete test: the Vault KV entries under `projects/blade/database/...` are removed automatically when the XR is deleted.
 * In MSSQL login-based mode, deleting the application database can still leave stale server logins behind in some cases.
 * If an app is deleted and then re-created with the same project name, Crossplane may fail with `The server principal '<user>' already exists.`
 * If that happens, drop the stale MSSQL logins manually and re-apply the XR.
