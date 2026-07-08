@@ -63,6 +63,11 @@ docker network connect kind mssql-test
 # After connecting, your MSSQL container can be reached by its container name (e.g., mssql-test) from inside the cluster.
 ```
 
+Note:
+* This demo uses the MSSQL `User` resource in login-based mode so it also works against an existing SQL Server instance where DB admins do not allow contained database authentication.
+* With this mode, Crossplane manages a server-level `LOGIN` and a database-level `USER`.
+* The composition pins `loginDatabase = "master"` so a deleted app database does not leave the login pointing at a non-existing default database on re-create.
+
 ### Crossplane - Install and configure providers and functions
 Install Vault and SQL provider and function to write KCL pipelines
 ```bash
@@ -100,6 +105,13 @@ Now, as the basic infrastructure and platform is setup, let's create 2 example a
 * PushSecrets to store db secrets in Vault
 * Vault policy and Kubernethes auth role for instanciated app to read its own credentials from Vault
 * ESO SecretStore and ExternalSecret to read back the credentials from Vault to create a secret in the application namespace to consume it
+
+Operational note:
+* The composition creates Crossplane `Usage` objects to enforce MSSQL teardown order: `Grant -> User -> Database`.
+* This was validated with a full `blade` re-create and delete test so the database is not deleted before the users and grants are removed.
+* In MSSQL login-based mode, deleting the application database can still leave stale server logins behind in some cases.
+* If an app is deleted and then re-created with the same project name, Crossplane may fail with `The server principal '<user>' already exists.`
+* If that happens, drop the stale MSSQL logins manually and re-apply the XR.
 
 ```bash
 # Create the razor application
@@ -211,6 +223,10 @@ kubectl -n blade get secret database-user-ro -o jsonpath='{.data}'
 
 # Verify if the secret contents are loaded successully in the environment of our application pod
 kubectl -n blade exec deployments/frontend -- printenv | grep -E "endpoint|port|username|password"
+
+# If you deleted and recreated the same app and hit stale MSSQL logins,
+# remove them once and re-apply the XR.
+docker exec mssql-test /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourStrong!Passw0rd' -C -d master -Q "DROP LOGIN [blade-readonly-user]; DROP LOGIN [blade-readwrite-user];"
 ```
 
 ### Deploy the Aurora example app
