@@ -287,6 +287,12 @@ spec:
               forProvider = {
                 name = observed_xr.spec.projectName + "-eso-push-policy",
                 policy = '''
+                  path "auth/token/lookup-self" {
+                    capabilities = ["read"]
+                  }
+                  path "projects/${observed_xr.spec.projectName}/*" {
+                    capabilities = ["create", "update", "read", "delete", "list"]
+                  }
                   path "projects/data/${observed_xr.spec.projectName}/*" {
                     capabilities = ["create", "update", "read", "delete", "list"]
                   }
@@ -361,6 +367,8 @@ spec:
                 name = "eso-secret-store-vault-backend",
                 kind = "SecretStore"
               }],
+              updatePolicy = "Replace",
+              deletionPolicy = "Delete",
               selector = {
                 secret = {
                   name = _database_user_ro.spec.writeConnectionSecretToRef.name
@@ -389,6 +397,8 @@ spec:
                 name = "eso-secret-store-vault-backend",
                 kind = "SecretStore"
               }],
+              updatePolicy = "Replace",
+              deletionPolicy = "Delete",
               selector = {
                 secret = {
                   name = _database_user_rw.spec.writeConnectionSecretToRef.name
@@ -402,6 +412,131 @@ spec:
                   }
                 }
               }]
+            }
+          }
+
+          _usage_eso_store_used_by_ro_push_secret = {
+            apiVersion = "protection.crossplane.io/v1beta1",
+            kind = "Usage",
+            metadata = {
+              name = observed_xr.spec.projectName + "-eso-store-used-by-ro-pushsecret"
+            }
+            spec = {
+              replayDeletion = True,
+              of = {
+                apiVersion = _eso_secret_store_vault_backend.apiVersion,
+                kind = _eso_secret_store_vault_backend.kind,
+                resourceRef = {
+                  name = _eso_secret_store_vault_backend.metadata.name
+                }
+              },
+              by = {
+                apiVersion = _eso_push_secret_db_user_ro.apiVersion,
+                kind = _eso_push_secret_db_user_ro.kind,
+                resourceRef = {
+                  name = _eso_push_secret_db_user_ro.metadata.name
+                }
+              }
+            }
+          }
+
+          _usage_ro_user_used_by_push_secret = {
+            apiVersion = "protection.crossplane.io/v1beta1",
+            kind = "Usage",
+            metadata = {
+              name = observed_xr.spec.projectName + "-readonly-user-used-by-pushsecret"
+            }
+            spec = {
+              replayDeletion = True,
+              of = {
+                apiVersion = _database_user_ro.apiVersion,
+                kind = _database_user_ro.kind,
+                resourceRef = {
+                  name = _database_user_ro.metadata.name
+                }
+              },
+              by = {
+                apiVersion = _eso_push_secret_db_user_ro.apiVersion,
+                kind = _eso_push_secret_db_user_ro.kind,
+                resourceRef = {
+                  name = _eso_push_secret_db_user_ro.metadata.name
+                }
+              }
+            }
+          }
+
+          _usage_eso_store_used_by_rw_push_secret = {
+            apiVersion = "protection.crossplane.io/v1beta1",
+            kind = "Usage",
+            metadata = {
+              name = observed_xr.spec.projectName + "-eso-store-used-by-rw-pushsecret"
+            }
+            spec = {
+              replayDeletion = True,
+              of = {
+                apiVersion = _eso_secret_store_vault_backend.apiVersion,
+                kind = _eso_secret_store_vault_backend.kind,
+                resourceRef = {
+                  name = _eso_secret_store_vault_backend.metadata.name
+                }
+              },
+              by = {
+                apiVersion = _eso_push_secret_db_user_rw.apiVersion,
+                kind = _eso_push_secret_db_user_rw.kind,
+                resourceRef = {
+                  name = _eso_push_secret_db_user_rw.metadata.name
+                }
+              }
+            }
+          }
+
+          _usage_rw_user_used_by_push_secret = {
+            apiVersion = "protection.crossplane.io/v1beta1",
+            kind = "Usage",
+            metadata = {
+              name = observed_xr.spec.projectName + "-readwrite-user-used-by-pushsecret"
+            }
+            spec = {
+              replayDeletion = True,
+              of = {
+                apiVersion = _database_user_rw.apiVersion,
+                kind = _database_user_rw.kind,
+                resourceRef = {
+                  name = _database_user_rw.metadata.name
+                }
+              },
+              by = {
+                apiVersion = _eso_push_secret_db_user_rw.apiVersion,
+                kind = _eso_push_secret_db_user_rw.kind,
+                resourceRef = {
+                  name = _eso_push_secret_db_user_rw.metadata.name
+                }
+              }
+            }
+          }
+
+          _usage_vault_token_used_by_eso_store = {
+            apiVersion = "protection.crossplane.io/v1beta1",
+            kind = "Usage",
+            metadata = {
+              name = observed_xr.spec.projectName + "-vault-token-used-by-eso-store"
+            }
+            spec = {
+              replayDeletion = True,
+              of = {
+                apiVersion = _vault_eso_token.apiVersion,
+                kind = _vault_eso_token.kind,
+                resourceRef = {
+                  name = _vault_eso_token.metadata.name
+                }
+              },
+              by = {
+                apiVersion = _eso_secret_store_vault_backend.apiVersion,
+                kind = _eso_secret_store_vault_backend.kind,
+                resourceRef = {
+                  name = _eso_secret_store_vault_backend.metadata.name
+                }
+              }
             }
           }
 
@@ -541,6 +676,11 @@ spec:
             _eso_secret_store_vault_backend,
             _eso_push_secret_db_user_ro,
             _eso_push_secret_db_user_rw,
+            _usage_eso_store_used_by_ro_push_secret,
+            _usage_ro_user_used_by_push_secret,
+            _usage_eso_store_used_by_rw_push_secret,
+            _usage_rw_user_used_by_push_secret,
+            _usage_vault_token_used_by_eso_store,
             _vault_policy_app_read,
             _vault_kubernetes_auth_role_app,
             _eso_secret_store_vault_backend_kubernetes_auth_app,
