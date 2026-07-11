@@ -2,7 +2,7 @@
 
 **Demonstrate**:
 * How to install Habor with lightweight settings for cluster internal usage (e.g. no metalLB)
-* Will be used as registry for /Argo Worflows pipeline
+* Will be used as registry for Argo Worflows pipeline
 
 ## Prepare environment
 ```bash
@@ -43,7 +43,7 @@ Image is up to date for sha256:ce8eb5cb9189eb681fae2a67f53c3382e8f6f4775712aec01
 kubectl port-forward svc/harbor -n harbor 8080:443
 
 # Open in browser to test
-http://localhost:8080
+https://localhost:8080
 Username: admin
 Passwort: Harbor12345
 
