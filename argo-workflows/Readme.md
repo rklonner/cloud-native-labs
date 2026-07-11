@@ -9,7 +9,7 @@ kind create cluster
 kubectl config use-context kind-kind
 
 # Install
-ARGO_WORKFLOWS_VERSION="v4.0.3"
+ARGO_WORKFLOWS_VERSION="v4.0.7"
 kubectl create namespace argo
 kubectl apply --server-side -n argo -f "https://github.com/argoproj/argo-workflows/releases/download/${ARGO_WORKFLOWS_VERSION}/quick-start-minimal.yaml"
 
