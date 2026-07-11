@@ -5,6 +5,6 @@ metadata:
 spec:
   containers:
   - name: my-app
-    image: harbor.harbor.svc.cluster.local/library/my-image:latest
+    image: harbor.harbor.svc.cluster.local/library/my-app:latest
   imagePullSecrets:
   - name: harbor-creds
