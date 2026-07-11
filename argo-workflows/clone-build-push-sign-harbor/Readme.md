@@ -7,6 +7,8 @@
 **Prerequisites**:
 * Argo Workflows is setup in your cluster (see [Installation](../Readme.md#install-in-kind-cluster))
 * argo CLI is installed (see [Installation](../Readme.md#install-in-kind-cluster))
+* Harbor is installed for usage as cluster internal registry (see [Installation](../../harbor/cluster-internal-registry/Readme.md))
+* Kyverno is installed if you want to verify cosign signatures at admission time (see [Installation](../../kyverno/Readme.md#install-with-helm-in-kind-cluster))
 
 * Install cosign cli locally
   ```
@@ -51,7 +53,7 @@ kubectl create -f workflow-clone-build.yaml
 argo logs @latest --follow
 
 # Verify that image is uploaded in Harbor UI
-# Verify that image has a artifacted saved along with it (Accessory)
+# Verify that image has an artifact saved along with it (Accessory)
 # Verify that "Signed by cosign" has a green checkmark
 
 # Build a real world image and test the process again
@@ -60,4 +62,19 @@ kubectl create -f workflow-clone-build-argocd-diff-preview.yaml
 
 # Watch logs of workflow
 argo logs @latest --follow
+```
+
+# Deploy a pod with the new image from Harbor
+
+Kubelet will be able to fetch image if Harbor service and Harbor nginx root CA was configured as described in the Harbor instructions.
+
+```bash
+# Deploy pod, it refers to a imagePullSecrets named 'harbor-creds' that is setup during Harbor configuration
+kubectl apply -f pod-my-app.yaml
+
+# Check if the pod run successfully and prints out a message
+kubectl logs pods/my-app-pod
+
+Output:
+Hello World!
 ```
