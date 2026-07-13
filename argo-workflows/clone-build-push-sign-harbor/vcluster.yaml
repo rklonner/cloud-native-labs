@@ -1,12 +1,15 @@
 experimental:
   docker:
     ports:
-      - "8000:8000"
-      - "8080:8080"
-      - "8200:8200"
-    loadBalancer:
+      # Argo CD HTTPS NodePort 32080 -> https://localhost:8000
+      - "8000:32080"
+      # Argo Workflows NodePort 32746 -> http://localhost:2746
+      - "2746:32746"
+      # Harbor TLS NodePort 32443 -> https://localhost:8443
+      - "8443:32443"
+    enabled: true
+    registryProxy:
       enabled: true
-      forwardPorts: true
 
 controlPlane:
   distro:

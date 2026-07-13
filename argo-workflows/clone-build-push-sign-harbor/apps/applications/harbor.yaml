@@ -7,15 +7,21 @@ metadata:
     argocd.argoproj.io/sync-wave: "1"
 spec:
   project: default
-  sources:
-    - repoURL: https://helm.goharbor.io
-      chart: harbor
-      helm:
-        valueFiles:
-          - $values/harbor/cluster-internal-registry/values.yaml
-    - repoURL: https://github.com/rklonner/cloud-native-labs.git
-      targetRevision: HEAD
-      ref: values
+  source:
+    repoURL: https://helm.goharbor.io
+    chart: harbor
+    targetRevision: 1.18.0
+    helm:
+      values: |
+        expose:
+          type: clusterIP
+          tls:
+            enabled: true
+            auto:
+              commonName: harbor.harbor.svc.cluster.local
+        externalURL: https://harbor.harbor.svc.cluster.local
+        persistence:
+          enabled: true
   destination:
     server: https://kubernetes.default.svc
     namespace: harbor
