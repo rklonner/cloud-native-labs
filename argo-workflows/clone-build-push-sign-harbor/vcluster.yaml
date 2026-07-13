@@ -1,0 +1,14 @@
+experimental:
+  docker:
+    ports:
+      - "8000:8000"
+      - "8080:8080"
+      - "8200:8200"
+    loadBalancer:
+      enabled: true
+      forwardPorts: true
+
+controlPlane:
+  distro:
+    k8s:
+      enabled: true

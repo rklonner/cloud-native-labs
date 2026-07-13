@@ -1,0 +1,121 @@
+version: '3'
+
+vars:
+  VCLUSTER_NAME: my-cluster
+  VCLUSTER_NAMESPACE: vcluster-{{.VCLUSTER_NAME}}
+  VCLUSTER_CONTEXT: vcluster_{{.VCLUSTER_NAME}}
+  VCLUSTER_VALUES_FILE: vcluster.yaml
+
+  ARGOCD_NAMESPACE: argocd
+  ARGOCD_CONTROLLER_NAME: argocd-application-controller
+
+  HARBOR_NAMESPACE: harbor
+  HARBOR_CA_SECRET: harbor-nginx
+  WORKFLOW_NAMESPACE: default
+  COSIGN_PASSWORD: demo12345
+
+  LAB_ROOT_APP: lab-clone-build-push-sign-harbor
+  LAB_ROOT_MANIFEST: apps/root.yaml
+  LAB_WORKFLOW_MANIFEST: workflow-clone-build.yaml
+
+tasks:
+  cluster:create:
+    desc: Create or upgrade the local vcluster
+    cmds:
+      - vcluster use driver docker
+      - vcluster create {{.VCLUSTER_NAME}} --upgrade --connect=false --namespace {{.VCLUSTER_NAMESPACE}} --kube-config-context-name {{.VCLUSTER_CONTEXT}} -f {{.VCLUSTER_VALUES_FILE}}
+
+  cluster:context:
+    desc: Verify the vcluster context is available
+    deps: [cluster:create]
+    cmds:
+      - kubectl config get-contexts {{.VCLUSTER_CONTEXT}}
+      - kubectl --context {{.VCLUSTER_CONTEXT}} cluster-info
+
+  argocd:install:
+    desc: Install Argo CD into the vcluster
+    deps: [cluster:context]
+    cmds:
+      - kubectl --context {{.VCLUSTER_CONTEXT}} create namespace {{.ARGOCD_NAMESPACE}} || true
+      - kubectl --context {{.VCLUSTER_CONTEXT}} apply -n {{.ARGOCD_NAMESPACE}} -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+  argocd:wait:
+    desc: Wait for Argo CD core components
+    deps: [argocd:install]
+    cmds:
+      - kubectl --context {{.VCLUSTER_CONTEXT}} -n {{.ARGOCD_NAMESPACE}} rollout status deployment/argocd-server --timeout=300s
+      - kubectl --context {{.VCLUSTER_CONTEXT}} -n {{.ARGOCD_NAMESPACE}} rollout status deployment/argocd-repo-server --timeout=300s
+      - kubectl --context {{.VCLUSTER_CONTEXT}} -n {{.ARGOCD_NAMESPACE}} rollout status statefulset/{{.ARGOCD_CONTROLLER_NAME}} --timeout=300s
+
+  lab:apply:
+    desc: Register the lab root application in Argo CD
+    deps: [argocd:wait]
+    cmds:
+      - kubectl --context {{.VCLUSTER_CONTEXT}} apply -f {{.LAB_ROOT_MANIFEST}}
+
+  lab:sync:
+    desc: Sync the lab root application via Argo CD core mode
+    deps: [lab:apply]
+    cmds:
+      - argocd app sync {{.LAB_ROOT_APP}} --core --kube-context {{.VCLUSTER_CONTEXT}} --controller-name {{.ARGOCD_CONTROLLER_NAME}}
+
+  lab:wait:
+    desc: Wait until the lab root application is synced and healthy
+    deps: [lab:sync]
+    cmds:
+      - argocd app wait {{.LAB_ROOT_APP}} --core --kube-context {{.VCLUSTER_CONTEXT}} --controller-name {{.ARGOCD_CONTROLLER_NAME}} --sync --health --timeout 600
+
+  harbor:trust-ca:
+    desc: Copy Harbor CA into all vcluster node containers and refresh trust
+    deps: [lab:wait]
+    cmds:
+      - ./scripts/trust-harbor-ca.sh {{.VCLUSTER_CONTEXT}} {{.HARBOR_NAMESPACE}} {{.HARBOR_CA_SECRET}}
+
+  cosign:keys:
+    desc: Generate cosign key pair in the vcluster if the secret is missing
+    deps: [lab:wait]
+    cmds:
+      - |
+        if kubectl --context {{.VCLUSTER_CONTEXT}} -n {{.WORKFLOW_NAMESPACE}} get secret cosign-keys >/dev/null 2>&1; then
+          printf 'secret/cosign-keys already exists in namespace {{.WORKFLOW_NAMESPACE}}\n'
+        else
+          COSIGN_PASSWORD={{.COSIGN_PASSWORD}} vcluster connect {{.VCLUSTER_NAME}} --namespace {{.VCLUSTER_NAMESPACE}} -- cosign generate-key-pair k8s://{{.WORKFLOW_NAMESPACE}}/cosign-keys
+        fi
+
+  workflow:run:
+    desc: Submit the clone build push sign workflow
+    deps:
+      - cosign:keys
+    cmds:
+      - kubectl --context {{.VCLUSTER_CONTEXT}} create -f {{.LAB_WORKFLOW_MANIFEST}}
+
+  workflow:logs:
+    desc: Follow the latest workflow logs
+    cmds:
+      - argo --context {{.VCLUSTER_CONTEXT}} logs @latest --follow
+
+  lab:up:
+    desc: Bootstrap Argo CD and sync the lab
+    deps:
+      - cluster:create
+      - cluster:context
+      - argocd:install
+      - argocd:wait
+      - lab:apply
+      - lab:sync
+      - lab:wait
+
+  lab:run:
+    desc: Bootstrap the lab and submit the example workflow
+    deps:
+      - lab:up
+      - harbor:trust-ca
+      - cosign:keys
+      - workflow:run
+
+  pod:deploy:
+    desc: Deploy the sample pod that pulls the Harbor-hosted image
+    deps:
+      - harbor:trust-ca
+    cmds:
+      - kubectl --context {{.VCLUSTER_CONTEXT}} apply -f pod-my-app.yaml

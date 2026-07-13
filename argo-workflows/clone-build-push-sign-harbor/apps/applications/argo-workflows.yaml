@@ -1,0 +1,48 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: lab-clone-build-push-sign-harbor-argo-workflows
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: default
+  source:
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-workflows
+    helm:
+      values: |
+        workflow:
+          serviceAccount:
+            create: false
+            name: default
+          rbac:
+            create: true
+            rules:
+              - apiGroups:
+                  - argoproj.io
+                resources:
+                  - workflowtaskresults
+                verbs:
+                  - create
+                  - patch
+                  - update
+                  - get
+                  - list
+                  - watch
+        controller:
+          workflowNamespaces:
+            - default
+        server:
+          enabled: true
+        crds:
+          install: true
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argo
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
