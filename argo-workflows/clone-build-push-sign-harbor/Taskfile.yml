@@ -19,8 +19,11 @@ vars:
   HARBOR_APP: harbor
   KYVERNO_APP: kyverno
   RESOURCES_APP: resources
-  ROOT_APP: lab-clone-build-push-sign-harbor
+  ROOT_APP: root
   LAB_WORKFLOW_MANIFEST: workflow-clone-build.yaml
+  ROOT_APP_CREATE_TIMEOUT: 180s
+  ROOT_APP_HEALTH_ATTEMPTS: 120
+  ROOT_APP_HEALTH_SLEEP: 5
 
 tasks:
   cluster:delete:
@@ -135,20 +138,20 @@ tasks:
     desc: Wait for root-managed Argo CD applications
     cmds:
       - task: app:root
-      - kubectl wait --for=create application/{{.WORKFLOW_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout=180s
-      - kubectl wait --for=create application/{{.HARBOR_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout=180s
-      - kubectl wait --for=create application/{{.KYVERNO_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout=180s
-      - kubectl wait --for=create application/{{.RESOURCES_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout=180s
+      - kubectl wait --for=create application/{{.WORKFLOW_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout={{.ROOT_APP_CREATE_TIMEOUT}}
+      - kubectl wait --for=create application/{{.HARBOR_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout={{.ROOT_APP_CREATE_TIMEOUT}}
+      - kubectl wait --for=create application/{{.KYVERNO_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout={{.ROOT_APP_CREATE_TIMEOUT}}
+      - kubectl wait --for=create application/{{.RESOURCES_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout={{.ROOT_APP_CREATE_TIMEOUT}}
       - |
         for app in {{.WORKFLOW_APP}} {{.HARBOR_APP}} {{.KYVERNO_APP}} {{.RESOURCES_APP}}; do
-          for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
+          for i in $(seq 1 {{.ROOT_APP_HEALTH_ATTEMPTS}}); do
             sync=$(kubectl -n {{.ARGOCD_NAMESPACE}} get application "$app" -o jsonpath='{.status.sync.status}')
             health=$(kubectl -n {{.ARGOCD_NAMESPACE}} get application "$app" -o jsonpath='{.status.health.status}')
             if [ "$sync" = "Synced" ] && [ "$health" = "Healthy" ]; then
               break
             fi
-            sleep 5
-            if [ "$i" -eq 24 ]; then
+            sleep {{.ROOT_APP_HEALTH_SLEEP}}
+            if [ "$i" -eq {{.ROOT_APP_HEALTH_ATTEMPTS}} ]; then
               printf 'application %s did not become Synced/Healthy (sync=%s health=%s)\n' "$app" "$sync" "$health" >&2
               exit 1
             fi
