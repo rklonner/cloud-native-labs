@@ -326,24 +326,24 @@ tasks:
       - argo logs @latest --follow
 
   lab:up:
-    desc: Bootstrap Argo CD, Argo Workflows UI, Harbor UI, and Kyverno
+    desc: Bootstrap the lab platform and prepare cosign verification
     cmds:
-      - task: platform:ui
-      - task: kyverno:wait
+      - task: cosign:keys
 
   lab:up:root:
-    desc: Bootstrap the lab through the Argo CD root application
+    desc: Bootstrap the lab through the Argo CD root application and prepare cosign verification
     cmds:
       - task: platform:ui:root
+      - task: cosign:keys:root
 
   lab:run:
-    desc: Bootstrap the lab and submit the example workflow
+    desc: Bootstrap the lab, prepare cosign verification, and submit the example workflow
     cmds:
       - task: harbor:trust-ca
       - task: workflow:run
 
   lab:run:root:
-    desc: Bootstrap the lab through the root application and submit the workflow
+    desc: Bootstrap the lab through the root application, prepare cosign verification, and submit the workflow
     cmds:
       - task: harbor:trust-ca:root
       - task: workflow:run:root
