@@ -9,6 +9,8 @@ spec:
     - name: repo-url
     - name: dockerfile
     - name: image-name
+    - name: sign-image
+      value: "true"
 
   volumeClaimTemplates:
   - metadata:
@@ -102,17 +104,21 @@ spec:
         IMAGE_BASE=$(echo "{{workflow.parameters.image-name}}" | cut -d: -f1)
         IMAGE_WITH_DIGEST="${IMAGE_BASE}@${DIGEST}"
 
-        echo "Signing image..."
-        # harbor 2.14 is not recognizing the new cosign bundle format in v3.+,
-        # so we use --new-bundle-format=false --use-signing-config=false
-        cosign sign --key /etc/cosign/cosign.key \
-          --allow-insecure-registry=true \
-          --registry-username="$REGISTRY_USER" \
-          --registry-password="$REGISTRY_PASSWORD" \
-          --new-bundle-format=false \
-          --use-signing-config=false \
-          --tlog-upload=false \
-          "$IMAGE_WITH_DIGEST"
+        if [ "{{workflow.parameters.sign-image}}" = "true" ]; then
+          echo "Signing image..."
+          # harbor 2.14 is not recognizing the new cosign bundle format in v3.+,
+          # so we use --new-bundle-format=false --use-signing-config=false
+          cosign sign --key /etc/cosign/cosign.key \
+            --allow-insecure-registry=true \
+            --registry-username="$REGISTRY_USER" \
+            --registry-password="$REGISTRY_PASSWORD" \
+            --new-bundle-format=false \
+            --use-signing-config=false \
+            --tlog-upload=false \
+            "$IMAGE_WITH_DIGEST"
+        else
+          echo "Skipping cosign signing..."
+        fi
 
         #cosign verify --key /etc/cosign/cosign.pub \
         #  --allow-insecure-registry=true \

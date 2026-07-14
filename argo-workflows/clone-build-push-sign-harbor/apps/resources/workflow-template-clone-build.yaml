@@ -11,6 +11,8 @@ spec:
       - name: repo-url
       - name: dockerfile
       - name: image-name
+      - name: sign-image
+        value: "true"
 
   volumeClaimTemplates:
     - metadata:
@@ -96,14 +98,18 @@ spec:
           IMAGE_BASE=$(printf '%s' "{{workflow.parameters.image-name}}" | cut -d: -f1)
           IMAGE_WITH_DIGEST="${IMAGE_BASE}@${DIGEST}"
 
-          cosign sign --key /etc/cosign/cosign.key \
-            --allow-insecure-registry=true \
-            --registry-username="$REGISTRY_USER" \
-            --registry-password="$REGISTRY_PASSWORD" \
-            --new-bundle-format=false \
-            --use-signing-config=false \
-            --tlog-upload=false \
-            "$IMAGE_WITH_DIGEST"
+          if [ "{{workflow.parameters.sign-image}}" = "true" ]; then
+            cosign sign --key /etc/cosign/cosign.key \
+              --allow-insecure-registry=true \
+              --registry-username="$REGISTRY_USER" \
+              --registry-password="$REGISTRY_PASSWORD" \
+              --new-bundle-format=false \
+              --use-signing-config=false \
+              --tlog-upload=false \
+              "$IMAGE_WITH_DIGEST"
+          else
+            printf 'Skipping cosign signing for %s\n' "$IMAGE_WITH_DIGEST"
+          fi
         securityContext:
           privileged: true
         volumeMounts:

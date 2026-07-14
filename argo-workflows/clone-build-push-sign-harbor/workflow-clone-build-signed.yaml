@@ -1,16 +1,16 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
-  generateName: build-run-
+  generateName: build-run-signed-
 spec:
   entrypoint: call-template
   serviceAccountName: default
-  
+
   volumeClaimTemplates:
   - metadata:
       name: workdir
     spec:
-      accessModes: [ "ReadWriteOnce" ]
+      accessModes: ["ReadWriteOnce"]
       resources:
         requests:
           storage: 1Gi

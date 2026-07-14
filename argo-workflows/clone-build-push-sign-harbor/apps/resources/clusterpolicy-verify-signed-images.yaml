@@ -1,0 +1,33 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: verify-lab-signed-images
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  validationFailureAction: Enforce
+  background: false
+  webhookConfiguration:
+    failurePolicy: Fail
+    timeoutSeconds: 30
+  rules:
+    - name: verify-my-app-images
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      verifyImages:
+        - imageReferences:
+            - "harbor.harbor.svc.cluster.local/library/my-app-*"
+          failureAction: Enforce
+          imageRegistryCredentials:
+            secrets:
+              - harbor-creds
+          attestors:
+            - count: 1
+              entries:
+                - keys:
+                    publicKeys: "k8s://kyverno/cosign-public-key"
+                    rekor:
+                      ignoreTlog: true

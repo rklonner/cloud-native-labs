@@ -20,7 +20,11 @@ vars:
   KYVERNO_APP: kyverno
   RESOURCES_APP: resources
   ROOT_APP: root
-  LAB_WORKFLOW_MANIFEST: workflow-clone-build.yaml
+  LAB_WORKFLOW_MANIFEST: workflow-clone-build-signed.yaml
+  SIGNED_WORKFLOW_MANIFEST: workflow-clone-build-signed.yaml
+  UNSIGNED_WORKFLOW_MANIFEST: workflow-clone-build-unsigned.yaml
+  SIGNED_POD_MANIFEST: pod-my-app-signed.yaml
+  UNSIGNED_POD_MANIFEST: pod-my-app-unsigned.yaml
   ROOT_APP_CREATE_TIMEOUT: 180s
   ROOT_APP_HEALTH_ATTEMPTS: 120
   ROOT_APP_HEALTH_SLEEP: 5
@@ -235,6 +239,19 @@ tasks:
         else
           COSIGN_PASSWORD={{.COSIGN_PASSWORD}} cosign generate-key-pair k8s://{{.WORKFLOW_NAMESPACE}}/cosign-keys
         fi
+      - task: cosign:pubkey:sync:root
+
+  cosign:pubkey:sync:root:
+    desc: Copy the cosign public key into the Kyverno namespace
+    cmds:
+      - task: resources:wait:root
+      - kubectl delete secret cosign-public-key -n kyverno --ignore-not-found=true
+      - |
+        kubectl get secret cosign-keys -n {{.WORKFLOW_NAMESPACE}} -o jsonpath='{.data.cosign\.pub}' \
+          | base64 -d \
+          | kubectl create secret generic cosign-public-key \
+              -n kyverno \
+              --from-file=cosign.pub=/dev/stdin
 
   workflow:run:root:
     desc: Submit the workflow after root-managed bootstrap
@@ -271,12 +288,37 @@ tasks:
         else
           COSIGN_PASSWORD={{.COSIGN_PASSWORD}} cosign generate-key-pair k8s://{{.WORKFLOW_NAMESPACE}}/cosign-keys
         fi
+      - task: cosign:pubkey:sync
+
+  cosign:pubkey:sync:
+    desc: Copy the cosign public key into the Kyverno namespace
+    cmds:
+      - task: resources:apply
+      - kubectl delete secret cosign-public-key -n kyverno --ignore-not-found=true
+      - |
+        kubectl get secret cosign-keys -n {{.WORKFLOW_NAMESPACE}} -o jsonpath='{.data.cosign\.pub}' \
+          | base64 -d \
+          | kubectl create secret generic cosign-public-key \
+              -n kyverno \
+              --from-file=cosign.pub=/dev/stdin
 
   workflow:run:
-    desc: Submit the clone build push sign workflow
+    desc: Submit the signed clone build push sign workflow
     cmds:
       - task: cosign:keys
       - kubectl create -f {{.LAB_WORKFLOW_MANIFEST}}
+
+  workflow:run:signed:
+    desc: Submit the signed image workflow
+    cmds:
+      - task: cosign:keys
+      - kubectl create -f {{.SIGNED_WORKFLOW_MANIFEST}}
+
+  workflow:run:unsigned:
+    desc: Submit the unsigned image workflow
+    cmds:
+      - task: cosign:keys
+      - kubectl create -f {{.UNSIGNED_WORKFLOW_MANIFEST}}
 
   workflow:logs:
     desc: Follow the latest workflow logs
@@ -307,7 +349,19 @@ tasks:
       - task: workflow:run:root
 
   pod:deploy:
-    desc: Deploy the sample pod that pulls the Harbor-hosted image
+    desc: Deploy the signed sample pod that pulls the Harbor-hosted image
     cmds:
       - task: harbor:trust-ca
-      - kubectl apply -f pod-my-app.yaml
+      - kubectl apply -f {{.SIGNED_POD_MANIFEST}}
+
+  pod:deploy:signed:
+    desc: Deploy the signed sample pod
+    cmds:
+      - task: harbor:trust-ca
+      - kubectl apply -f {{.SIGNED_POD_MANIFEST}}
+
+  pod:deploy:unsigned:
+    desc: Deploy the unsigned sample pod
+    cmds:
+      - task: harbor:trust-ca
+      - kubectl apply -f {{.UNSIGNED_POD_MANIFEST}}
