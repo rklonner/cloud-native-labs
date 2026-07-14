@@ -98,10 +98,16 @@ tasks:
       - task: argocd:wait
       - task app:argo-workflows & task app:harbor & task app:kyverno & wait
 
-  platform:ui:
-    desc: Wait for Argo Workflows and Harbor UIs in parallel
+  platform:ready:
+    desc: Wait for Argo Workflows, Harbor, and Kyverno to be ready
     cmds:
       - task: platform:apps
+      - task argo-workflows:wait & task harbor:wait & task kyverno:wait & wait
+
+  platform:ui:
+    desc: Verify local Argo Workflows and Harbor access after platform readiness
+    cmds:
+      - task: platform:ready
       - task argo-workflows:ui & task harbor:ui & wait
 
   app:harbor:
@@ -223,16 +229,20 @@ tasks:
     cmds:
       - task: root:wait
 
+  harbor:trust-ca:root:only:
+    desc: Trust the Harbor CA after root-managed bootstrap
+    cmds:
+      - ./scripts/trust-harbor-ca.sh {{.HARBOR_NAMESPACE}} {{.HARBOR_CA_SECRET}}
+
   harbor:trust-ca:root:
     desc: Trust the Harbor CA after root-managed bootstrap
     cmds:
       - task: resources:wait:root
-      - ./scripts/trust-harbor-ca.sh {{.HARBOR_NAMESPACE}} {{.HARBOR_CA_SECRET}}
+      - task: harbor:trust-ca:root:only
 
-  cosign:keys:root:
+  cosign:keys:root:only:
     desc: Generate cosign key pair after root-managed bootstrap
     cmds:
-      - task: resources:wait:root
       - |
         if kubectl -n {{.WORKFLOW_NAMESPACE}} get secret cosign-keys >/dev/null 2>&1; then
           printf 'secret/cosign-keys already exists in namespace {{.WORKFLOW_NAMESPACE}}\n'
@@ -240,6 +250,12 @@ tasks:
           COSIGN_PASSWORD={{.COSIGN_PASSWORD}} cosign generate-key-pair k8s://{{.WORKFLOW_NAMESPACE}}/cosign-keys
         fi
       - task: cosign:pubkey:sync:root
+
+  cosign:keys:root:
+    desc: Generate cosign key pair after root-managed bootstrap
+    cmds:
+      - task: resources:wait:root
+      - task: cosign:keys:root:only
 
   cosign:pubkey:sync:root:
     desc: Copy the cosign public key into the Kyverno namespace
@@ -254,34 +270,48 @@ tasks:
               --from-file=cosign.pub=/dev/stdin
 
   workflow:run:root:
-    desc: Submit the workflow after root-managed bootstrap
+    desc: Submit the workflow after root-managed platform bootstrap
     cmds:
       - task: cosign:keys:root
       - kubectl create -f {{.LAB_WORKFLOW_MANIFEST}}
 
-  platform:ui:root:
-    desc: Wait for root-managed Argo Workflows, Harbor, and Kyverno
+  platform:ready:root:
+    desc: Wait for the root-managed Argo Workflows, Harbor, and Kyverno components
     cmds:
       - task: root:wait
-      - task argo-workflows:ui:root & task harbor:ui:root & task kyverno:wait:root & wait
+      - task argo-workflows:wait:root & task harbor:wait:root & task kyverno:wait:root & wait
+
+  platform:ui:root:
+    desc: Verify local Argo Workflows and Harbor access after root-managed platform readiness
+    cmds:
+      - task: platform:ready:root
+      - task argo-workflows:ui:root & task harbor:ui:root & wait
+
+  resources:apply:only:
+    desc: Apply lab-local resources
+    cmds:
+      - kubectl apply -f apps/resources
 
   resources:apply:
-    desc: Apply lab-local resources after Argo Workflows and Harbor are usable
+    desc: Apply lab-local resources after the platform is ready
     cmds:
-      - task: platform:ui
-      - task: kyverno:wait
-      - kubectl apply -f apps/resources
+      - task: platform:ready
+      - task: resources:apply:only
+
+  harbor:trust-ca:only:
+    desc: Copy Harbor CA into all vcluster node containers and refresh trust
+    cmds:
+      - ./scripts/trust-harbor-ca.sh {{.HARBOR_NAMESPACE}} {{.HARBOR_CA_SECRET}}
 
   harbor:trust-ca:
     desc: Copy Harbor CA into all vcluster node containers and refresh trust
     cmds:
       - task: resources:apply
-      - ./scripts/trust-harbor-ca.sh {{.HARBOR_NAMESPACE}} {{.HARBOR_CA_SECRET}}
+      - task: harbor:trust-ca:only
 
-  cosign:keys:
+  cosign:keys:only:
     desc: Generate cosign key pair in the vcluster if the secret is missing
     cmds:
-      - task: resources:apply
       - |
         if kubectl -n {{.WORKFLOW_NAMESPACE}} get secret cosign-keys >/dev/null 2>&1; then
           printf 'secret/cosign-keys already exists in namespace {{.WORKFLOW_NAMESPACE}}\n'
@@ -289,6 +319,12 @@ tasks:
           COSIGN_PASSWORD={{.COSIGN_PASSWORD}} cosign generate-key-pair k8s://{{.WORKFLOW_NAMESPACE}}/cosign-keys
         fi
       - task: cosign:pubkey:sync
+
+  cosign:keys:
+    desc: Generate cosign key pair in the vcluster if the secret is missing
+    cmds:
+      - task: resources:apply
+      - task: cosign:keys:only
 
   cosign:pubkey:sync:
     desc: Copy the cosign public key into the Kyverno namespace
@@ -328,25 +364,33 @@ tasks:
   lab:up:
     desc: Bootstrap the lab platform and prepare cosign verification
     cmds:
-      - task: cosign:keys
+      - task: argocd:wait
+      - task: platform:ready
+      - task: resources:apply:only
+      - task: harbor:trust-ca:only
+      - task: cosign:keys:only
 
   lab:up:root:
-    desc: Bootstrap the lab through the Argo CD root application and prepare cosign verification
+    desc: Bootstrap the lab platform through the Argo CD root application and prepare cosign verification
     cmds:
-      - task: platform:ui:root
-      - task: cosign:keys:root
+      - task: argocd:wait
+      - task: app:root
+      - task: platform:ready:root
+      - task: resources:wait:root
+      - task: harbor:trust-ca:root:only
+      - task: cosign:keys:root:only
 
   lab:run:
     desc: Bootstrap the lab, prepare cosign verification, and submit the example workflow
     cmds:
-      - task: harbor:trust-ca
-      - task: workflow:run
+      - task: lab:up
+      - kubectl create -f {{.LAB_WORKFLOW_MANIFEST}}
 
   lab:run:root:
-    desc: Bootstrap the lab through the root application, prepare cosign verification, and submit the workflow
+    desc: Bootstrap the lab platform through the root application, prepare cosign verification, and submit the workflow
     cmds:
-      - task: harbor:trust-ca:root
-      - task: workflow:run:root
+      - task: lab:up:root
+      - kubectl create -f {{.LAB_WORKFLOW_MANIFEST}}
 
   pod:deploy:
     desc: Deploy the signed sample pod that pulls the Harbor-hosted image
