@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: lab-clone-build-push-sign-harbor-argo-workflows
+  name: argo-workflows
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "1"
@@ -12,6 +12,7 @@ spec:
     chart: argo-workflows
     targetRevision: 0.45.24
     helm:
+      releaseName: lab-clone-build-push-sign-harbor-argo-workflows
       values: |
         workflow:
           serviceAccount:

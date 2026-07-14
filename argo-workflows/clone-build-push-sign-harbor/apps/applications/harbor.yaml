@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: lab-clone-build-push-sign-harbor-harbor
+  name: harbor
   namespace: argocd
   annotations:
     argocd.argoproj.io/sync-wave: "1"
@@ -12,6 +12,7 @@ spec:
     chart: harbor
     targetRevision: 1.18.0
     helm:
+      releaseName: lab-clone-build-push-sign-harbor-harbor
       values: |
         expose:
           type: clusterIP

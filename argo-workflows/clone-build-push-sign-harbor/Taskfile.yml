@@ -15,10 +15,10 @@ vars:
   WORKFLOW_NAMESPACE: default
   COSIGN_PASSWORD: demo12345
 
-  WORKFLOW_APP: lab-clone-build-push-sign-harbor-argo-workflows
-  HARBOR_APP: lab-clone-build-push-sign-harbor-harbor
-  KYVERNO_APP: lab-clone-build-push-sign-harbor-kyverno
-  RESOURCES_APP: lab-clone-build-push-sign-harbor-resources
+  WORKFLOW_APP: argo-workflows
+  HARBOR_APP: harbor
+  KYVERNO_APP: kyverno
+  RESOURCES_APP: resources
   ROOT_APP: lab-clone-build-push-sign-harbor
   LAB_WORKFLOW_MANIFEST: workflow-clone-build.yaml
 
@@ -53,6 +53,7 @@ tasks:
       - task: cluster:create
       - kubectl create namespace {{.ARGOCD_NAMESPACE}} || true
       - kubectl apply --server-side --force-conflicts -n {{.ARGOCD_NAMESPACE}} -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+      - kubectl apply -f apps/resources/secret-argocd-admin-password.yaml
 
   argocd:wait:
     desc: Wait for Argo CD and expose it on localhost:8000
@@ -85,10 +86,10 @@ tasks:
       - for i in 1 2 3 4 5 6; do curl --fail --max-time 10 http://localhost:2746/ >/dev/null && exit 0; sleep 5; done; exit 1
 
   platform:apps:
-    desc: Apply Argo Workflows and Harbor apps in parallel after Argo CD is ready
+    desc: Apply Argo Workflows, Harbor, and Kyverno apps after Argo CD is ready
     cmds:
       - task: argocd:wait
-      - task app:argo-workflows & task app:harbor & wait
+      - task app:argo-workflows & task app:harbor & task app:kyverno & wait
 
   platform:ui:
     desc: Wait for Argo Workflows and Harbor UIs in parallel
@@ -124,8 +125,14 @@ tasks:
       - kubectl delete application {{.ROOT_APP}} -n {{.ARGOCD_NAMESPACE}} --ignore-not-found=true
       - kubectl apply -f apps/root.yaml
 
+  app:kyverno:
+    desc: Apply the Kyverno child application
+    cmds:
+      - task: argocd:wait
+      - kubectl apply -f apps/applications/kyverno.yaml
+
   kyverno:install:
-    desc: Apply Kyverno as an optional child application
+    desc: Recreate the Kyverno child application
     cmds:
       - task: argocd:wait
       - kubectl delete application {{.KYVERNO_APP}} -n {{.ARGOCD_NAMESPACE}} --ignore-not-found=true
@@ -134,14 +141,15 @@ tasks:
   kyverno:wait:
     desc: Wait for Kyverno deployment
     cmds:
-      - task: kyverno:install
-      - kubectl wait --for=create deployment/lab-clone-build-push-sign-harbor-kyverno-admission-controller -n kyverno --timeout=180s
-      - kubectl -n kyverno rollout status deployment/lab-clone-build-push-sign-harbor-kyverno-admission-controller --timeout=300s
+      - task: app:kyverno
+      - kubectl wait --for=create deployment/{{.KYVERNO_APP}}-admission-controller -n kyverno --timeout=180s
+      - kubectl -n kyverno rollout status deployment/{{.KYVERNO_APP}}-admission-controller --timeout=300s
 
   resources:apply:
     desc: Apply lab-local resources after Argo Workflows and Harbor are usable
     cmds:
       - task: platform:ui
+      - task: kyverno:wait
       - kubectl apply -f apps/resources
 
   harbor:trust-ca:
@@ -173,9 +181,10 @@ tasks:
       - argo logs @latest --follow
 
   lab:up:
-    desc: Bootstrap Argo CD, Argo Workflows UI, and Harbor UI
+    desc: Bootstrap Argo CD, Argo Workflows UI, Harbor UI, and Kyverno
     cmds:
       - task: platform:ui
+      - task: kyverno:wait
 
   lab:run:
     desc: Bootstrap the lab and submit the example workflow
