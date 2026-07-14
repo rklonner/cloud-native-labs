@@ -118,12 +118,42 @@ tasks:
       - kubectl apply -f apps/resources/service-harbor-local.yaml
       - for i in 1 2 3 4 5 6; do curl -skI --max-time 10 https://localhost:8443/ && exit 0; sleep 5; done; exit 1
 
+  app:root:
+    desc: Apply the root application
+    cmds:
+      - task: argocd:wait
+      - kubectl apply -f apps/root.yaml
+
   root:apply:
-    desc: Optional root-app test path
+    desc: Recreate the root application
     cmds:
       - task: argocd:wait
       - kubectl delete application {{.ROOT_APP}} -n {{.ARGOCD_NAMESPACE}} --ignore-not-found=true
       - kubectl apply -f apps/root.yaml
+
+  root:wait:
+    desc: Wait for root-managed Argo CD applications
+    cmds:
+      - task: app:root
+      - kubectl wait --for=create application/{{.WORKFLOW_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout=180s
+      - kubectl wait --for=create application/{{.HARBOR_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout=180s
+      - kubectl wait --for=create application/{{.KYVERNO_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout=180s
+      - kubectl wait --for=create application/{{.RESOURCES_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout=180s
+      - |
+        for app in {{.WORKFLOW_APP}} {{.HARBOR_APP}} {{.KYVERNO_APP}} {{.RESOURCES_APP}}; do
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24; do
+            sync=$(kubectl -n {{.ARGOCD_NAMESPACE}} get application "$app" -o jsonpath='{.status.sync.status}')
+            health=$(kubectl -n {{.ARGOCD_NAMESPACE}} get application "$app" -o jsonpath='{.status.health.status}')
+            if [ "$sync" = "Synced" ] && [ "$health" = "Healthy" ]; then
+              break
+            fi
+            sleep 5
+            if [ "$i" -eq 24 ]; then
+              printf 'application %s did not become Synced/Healthy (sync=%s health=%s)\n' "$app" "$sync" "$health" >&2
+              exit 1
+            fi
+          done
+        done
 
   app:kyverno:
     desc: Apply the Kyverno child application
@@ -144,6 +174,76 @@ tasks:
       - task: app:kyverno
       - kubectl wait --for=create deployment/{{.KYVERNO_APP}}-admission-controller -n kyverno --timeout=180s
       - kubectl -n kyverno rollout status deployment/{{.KYVERNO_APP}}-admission-controller --timeout=300s
+
+  argo-workflows:wait:root:
+    desc: Wait for the root-managed Argo Workflows deployment
+    cmds:
+      - task: root:wait
+      - kubectl wait --for=create deployment/lab-clone-build-push-sign-harbor-argo-workflows-server -n argo --timeout=180s
+      - kubectl -n argo rollout status deployment/lab-clone-build-push-sign-harbor-argo-workflows-server --timeout=300s
+
+  argo-workflows:ui:root:
+    desc: Verify root-managed Argo Workflows on localhost:2746
+    cmds:
+      - task: argo-workflows:wait:root
+      - task: resources:wait:root
+      - for i in 1 2 3 4 5 6; do curl --fail --max-time 10 http://localhost:2746/ >/dev/null && exit 0; sleep 5; done; exit 1
+
+  harbor:wait:root:
+    desc: Wait for the root-managed Harbor deployment
+    cmds:
+      - task: root:wait
+      - kubectl wait --for=create deployment/lab-clone-build-push-sign-harbor-harbor-nginx -n harbor --timeout=180s
+      - kubectl -n harbor rollout status deployment/lab-clone-build-push-sign-harbor-harbor-nginx --timeout=300s
+      - kubectl wait --for=create service/harbor -n harbor --timeout=180s
+
+  harbor:ui:root:
+    desc: Verify root-managed Harbor on localhost:8443
+    cmds:
+      - task: harbor:wait:root
+      - task: resources:wait:root
+      - for i in 1 2 3 4 5 6; do curl -skI --max-time 10 https://localhost:8443/ >/dev/null && exit 0; sleep 5; done; exit 1
+
+  kyverno:wait:root:
+    desc: Wait for the root-managed Kyverno deployment
+    cmds:
+      - task: root:wait
+      - kubectl wait --for=create deployment/{{.KYVERNO_APP}}-admission-controller -n kyverno --timeout=180s
+      - kubectl -n kyverno rollout status deployment/{{.KYVERNO_APP}}-admission-controller --timeout=300s
+
+  resources:wait:root:
+    desc: Wait for the root-managed resources application
+    cmds:
+      - task: root:wait
+
+  harbor:trust-ca:root:
+    desc: Trust the Harbor CA after root-managed bootstrap
+    cmds:
+      - task: resources:wait:root
+      - ./scripts/trust-harbor-ca.sh {{.HARBOR_NAMESPACE}} {{.HARBOR_CA_SECRET}}
+
+  cosign:keys:root:
+    desc: Generate cosign key pair after root-managed bootstrap
+    cmds:
+      - task: resources:wait:root
+      - |
+        if kubectl -n {{.WORKFLOW_NAMESPACE}} get secret cosign-keys >/dev/null 2>&1; then
+          printf 'secret/cosign-keys already exists in namespace {{.WORKFLOW_NAMESPACE}}\n'
+        else
+          COSIGN_PASSWORD={{.COSIGN_PASSWORD}} cosign generate-key-pair k8s://{{.WORKFLOW_NAMESPACE}}/cosign-keys
+        fi
+
+  workflow:run:root:
+    desc: Submit the workflow after root-managed bootstrap
+    cmds:
+      - task: cosign:keys:root
+      - kubectl create -f {{.LAB_WORKFLOW_MANIFEST}}
+
+  platform:ui:root:
+    desc: Wait for root-managed Argo Workflows, Harbor, and Kyverno
+    cmds:
+      - task: root:wait
+      - task argo-workflows:ui:root & task harbor:ui:root & task kyverno:wait:root & wait
 
   resources:apply:
     desc: Apply lab-local resources after Argo Workflows and Harbor are usable
@@ -186,11 +286,22 @@ tasks:
       - task: platform:ui
       - task: kyverno:wait
 
+  lab:up:root:
+    desc: Bootstrap the lab through the Argo CD root application
+    cmds:
+      - task: platform:ui:root
+
   lab:run:
     desc: Bootstrap the lab and submit the example workflow
     cmds:
       - task: harbor:trust-ca
       - task: workflow:run
+
+  lab:run:root:
+    desc: Bootstrap the lab through the root application and submit the workflow
+    cmds:
+      - task: harbor:trust-ca:root
+      - task: workflow:run:root
 
   pod:deploy:
     desc: Deploy the sample pod that pulls the Harbor-hosted image
