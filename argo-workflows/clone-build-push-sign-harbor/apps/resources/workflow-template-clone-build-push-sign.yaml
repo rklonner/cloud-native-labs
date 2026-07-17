@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
 metadata:
-  name: buildah-git-template
+  name: clone-build-push-sign-image
   namespace: default
   annotations:
     argocd.argoproj.io/sync-wave: "1"

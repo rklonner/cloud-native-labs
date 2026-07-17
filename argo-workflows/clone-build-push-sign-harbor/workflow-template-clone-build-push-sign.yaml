@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: WorkflowTemplate
 metadata:
-  name: buildah-git-template
+  name: clone-build-push-sign-image
 spec:
   # Standardwerte für die Parameter (können beim Aufruf überschrieben werden)
   arguments:

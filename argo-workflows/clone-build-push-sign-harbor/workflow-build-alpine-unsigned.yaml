@@ -1,7 +1,7 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Workflow
 metadata:
-  generateName: build-run-signed-
+  generateName: build-run-unsigned-
 spec:
   entrypoint: call-template
   serviceAccountName: default
@@ -22,14 +22,14 @@ spec:
     - name: dockerfile
       value: "argo-workflows/clone-build-push-sign-harbor/Dockerfile"
     - name: image-name
-      value: "harbor.harbor.svc.cluster.local/library/my-app-signed:latest"
+      value: "harbor.harbor.svc.cluster.local/library/my-app-unsigned:latest"
     - name: sign-image
-      value: "true"
+      value: "false"
 
   templates:
   - name: call-template
     steps:
     - - name: run-build
         templateRef:
-          name: buildah-git-template
+          name: clone-build-push-sign-image
           template: main
