@@ -17,6 +17,7 @@ vars:
 
   WORKFLOW_APP: argo-workflows
   HARBOR_APP: harbor
+  HARBOR_CONFIG_APP: harbor-config
   KYVERNO_APP: kyverno
   RESOURCES_APP: resources
   ROOT_APP: root
@@ -96,13 +97,14 @@ tasks:
     desc: Apply Argo Workflows, Harbor, and Kyverno apps after Argo CD is ready
     cmds:
       - task: argocd:wait
-      - task app:argo-workflows & task app:harbor & task app:kyverno & wait
+      - task: app:harbor
+      - task app:argo-workflows & task app:harbor-config & task app:kyverno & wait
 
   platform:ready:
     desc: Wait for Argo Workflows, Harbor, and Kyverno to be ready
     cmds:
       - task: platform:apps
-      - task argo-workflows:wait & task harbor:wait & task kyverno:wait & wait
+      - task argo-workflows:wait & task harbor:wait & task harbor-config:wait & task kyverno:wait & wait
 
   platform:ui:
     desc: Verify local Argo Workflows and Harbor access after platform readiness
@@ -115,6 +117,12 @@ tasks:
     cmds:
       - task: argocd:wait
       - kubectl apply -f apps/applications/harbor.yaml
+
+  app:harbor-config:
+    desc: Apply the Harbor config child application
+    cmds:
+      - task: app:harbor
+      - kubectl apply -f apps/applications/harbor-config.yaml
 
   harbor:wait:
     desc: Wait for Harbor nginx and main service creation
@@ -130,6 +138,25 @@ tasks:
       - task: harbor:wait
       - kubectl apply -f apps/resources/service-harbor-local.yaml
       - for i in 1 2 3 4 5 6; do curl -skI --max-time 10 https://localhost:8443/ && exit 0; sleep 5; done; exit 1
+
+  harbor-config:wait:
+    desc: Wait for Harbor project configuration to complete
+    cmds:
+      - task: app:harbor-config
+      - kubectl wait --for=create application/{{.HARBOR_CONFIG_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout={{.ROOT_APP_CREATE_TIMEOUT}}
+      - |
+        for i in $(seq 1 {{.ROOT_APP_HEALTH_ATTEMPTS}}); do
+          sync=$(kubectl -n {{.ARGOCD_NAMESPACE}} get application {{.HARBOR_CONFIG_APP}} -o jsonpath='{.status.sync.status}')
+          health=$(kubectl -n {{.ARGOCD_NAMESPACE}} get application {{.HARBOR_CONFIG_APP}} -o jsonpath='{.status.health.status}')
+          if [ "$sync" = "Synced" ] && [ "$health" = "Healthy" ]; then
+            break
+          fi
+          sleep {{.ROOT_APP_HEALTH_SLEEP}}
+          if [ "$i" -eq {{.ROOT_APP_HEALTH_ATTEMPTS}} ]; then
+            printf 'application %s did not become Synced/Healthy (sync=%s health=%s)\n' '{{.HARBOR_CONFIG_APP}}' "$sync" "$health" >&2
+            exit 1
+          fi
+        done
 
   app:root:
     desc: Apply the root application
@@ -150,10 +177,11 @@ tasks:
       - task: app:root
       - kubectl wait --for=create application/{{.WORKFLOW_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout={{.ROOT_APP_CREATE_TIMEOUT}}
       - kubectl wait --for=create application/{{.HARBOR_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout={{.ROOT_APP_CREATE_TIMEOUT}}
+      - kubectl wait --for=create application/{{.HARBOR_CONFIG_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout={{.ROOT_APP_CREATE_TIMEOUT}}
       - kubectl wait --for=create application/{{.KYVERNO_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout={{.ROOT_APP_CREATE_TIMEOUT}}
       - kubectl wait --for=create application/{{.RESOURCES_APP}} -n {{.ARGOCD_NAMESPACE}} --timeout={{.ROOT_APP_CREATE_TIMEOUT}}
       - |
-        for app in {{.WORKFLOW_APP}} {{.HARBOR_APP}} {{.KYVERNO_APP}} {{.RESOURCES_APP}}; do
+        for app in {{.WORKFLOW_APP}} {{.HARBOR_APP}} {{.HARBOR_CONFIG_APP}} {{.KYVERNO_APP}} {{.RESOURCES_APP}}; do
           for i in $(seq 1 {{.ROOT_APP_HEALTH_ATTEMPTS}}); do
             sync=$(kubectl -n {{.ARGOCD_NAMESPACE}} get application "$app" -o jsonpath='{.status.sync.status}')
             health=$(kubectl -n {{.ARGOCD_NAMESPACE}} get application "$app" -o jsonpath='{.status.health.status}')
@@ -186,6 +214,13 @@ tasks:
     cmds:
       - task: app:kyverno
       - kubectl wait --for=create deployment/{{.KYVERNO_APP}}-admission-controller -n kyverno --timeout=180s
+      - kubectl -n kyverno rollout status deployment/{{.KYVERNO_APP}}-admission-controller --timeout=300s
+
+  kyverno:restart:
+    desc: Restart the Kyverno admission controller to reload trust material
+    cmds:
+      - task: kyverno:wait
+      - kubectl -n kyverno rollout restart deployment/{{.KYVERNO_APP}}-admission-controller
       - kubectl -n kyverno rollout status deployment/{{.KYVERNO_APP}}-admission-controller --timeout=300s
 
   argo-workflows:wait:root:
@@ -224,6 +259,13 @@ tasks:
       - kubectl wait --for=create deployment/{{.KYVERNO_APP}}-admission-controller -n kyverno --timeout=180s
       - kubectl -n kyverno rollout status deployment/{{.KYVERNO_APP}}-admission-controller --timeout=300s
 
+  kyverno:restart:root:
+    desc: Restart the root-managed Kyverno admission controller to reload trust material
+    cmds:
+      - task: kyverno:wait:root
+      - kubectl -n kyverno rollout restart deployment/{{.KYVERNO_APP}}-admission-controller
+      - kubectl -n kyverno rollout status deployment/{{.KYVERNO_APP}}-admission-controller --timeout=300s
+
   resources:wait:root:
     desc: Wait for the root-managed resources application
     cmds:
@@ -233,6 +275,7 @@ tasks:
     desc: Trust the Harbor CA after root-managed bootstrap
     cmds:
       - ./scripts/trust-harbor-ca.sh {{.HARBOR_NAMESPACE}} {{.HARBOR_CA_SECRET}}
+      - task: kyverno:restart:root
 
   harbor:trust-ca:root:
     desc: Trust the Harbor CA after root-managed bootstrap
@@ -302,6 +345,7 @@ tasks:
     desc: Copy Harbor CA into all vcluster node containers and refresh trust
     cmds:
       - ./scripts/trust-harbor-ca.sh {{.HARBOR_NAMESPACE}} {{.HARBOR_CA_SECRET}}
+      - task: kyverno:restart
 
   harbor:trust-ca:
     desc: Copy Harbor CA into all vcluster node containers and refresh trust
