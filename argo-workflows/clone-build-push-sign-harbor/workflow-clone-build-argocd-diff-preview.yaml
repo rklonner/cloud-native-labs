@@ -23,6 +23,8 @@ spec:
       value: "Dockerfile"
     - name: image-name
       value: "harbor.harbor.svc.cluster.local/library/argocd-diff-preview:latest"
+    - name: sign-image
+      value: "true"
 
   templates:
   - name: call-template
@@ -31,4 +33,3 @@ spec:
         templateRef:
           name: buildah-git-template
           template: main
-
