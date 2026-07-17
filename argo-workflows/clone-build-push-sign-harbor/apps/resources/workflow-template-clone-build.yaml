@@ -30,6 +30,13 @@ spec:
             template: clone-repo
         - - name: build
             template: build-image
+        - - name: sign
+            template: sign-image
+            when: '{{workflow.parameters.sign-image}} == true'
+            arguments:
+              parameters:
+                - name: image-with-digest
+                  value: '{{steps.build.outputs.parameters.image-with-digest}}'
 
     - name: clone-repo
       script:
@@ -44,16 +51,18 @@ spec:
             mountPath: /workspace
 
     - name: build-image
+      outputs:
+        parameters:
+          - name: image-with-digest
+            valueFrom:
+              path: /workspace/image-with-digest.txt
       script:
         image: quay.io/buildah/stable:latest
         workingDir: /workspace
         command: [sh]
+        securityContext:
+          privileged: true
         env:
-          - name: COSIGN_PASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: cosign-keys
-                key: cosign.password
           - name: REGISTRY_USER
             valueFrom:
               secretKeyRef:
@@ -66,19 +75,6 @@ spec:
                 key: password
         source: |
           set -e
-          COSIGN_VERSION="3.0.5"
-          ARCH=$(uname -m)
-          if [ "$ARCH" = "x86_64" ]; then
-              COSIGN_ARCH="amd64"
-          elif [ "$ARCH" = "aarch64" ]; then
-              COSIGN_ARCH="arm64"
-          else
-              COSIGN_ARCH="amd64"
-          fi
-
-          curl -L "https://github.com/sigstore/cosign/releases/download/v${COSIGN_VERSION}/cosign-linux-${COSIGN_ARCH}" -o /usr/local/bin/cosign
-          chmod +x /usr/local/bin/cosign
-
           mkdir -p /etc/containers
           printf '%s\n%s\n' \
             'unqualified-search-registries = ["docker.io", "quay.io"]' \
@@ -97,34 +93,56 @@ spec:
           DIGEST=$(cat /workspace/digest.txt)
           IMAGE_BASE=$(printf '%s' "{{workflow.parameters.image-name}}" | cut -d: -f1)
           IMAGE_WITH_DIGEST="${IMAGE_BASE}@${DIGEST}"
-
-          if [ "{{workflow.parameters.sign-image}}" = "true" ]; then
-            cosign sign --key /etc/cosign/cosign.key \
-              --allow-insecure-registry=true \
-              --registry-username="$REGISTRY_USER" \
-              --registry-password="$REGISTRY_PASSWORD" \
-              --new-bundle-format=false \
-              --use-signing-config=false \
-              --tlog-upload=false \
-              "$IMAGE_WITH_DIGEST"
-          else
-            printf 'Skipping cosign signing for %s\n' "$IMAGE_WITH_DIGEST"
-          fi
-        securityContext:
-          privileged: true
+          printf '%s' "$IMAGE_WITH_DIGEST" > /workspace/image-with-digest.txt
         volumeMounts:
           - name: workdir
             mountPath: /workspace
           - name: registry-auth
             mountPath: /etc/buildah-auth
             readOnly: true
-          - name: cosign-key
-            mountPath: /etc/cosign
-            readOnly: true
       volumes:
         - name: registry-auth
           secret:
             secretName: harbor-creds
+
+    - name: sign-image
+      inputs:
+        parameters:
+          - name: image-with-digest
+      container:
+        image: ghcr.io/sigstore/cosign/cosign:v2.4.1
+        command: [cosign]
+        args:
+          - sign
+          - --key
+          - /etc/cosign/cosign.key
+          - --yes
+          - --allow-insecure-registry=true
+          - --registry-username=$(REGISTRY_USER)
+          - --registry-password=$(REGISTRY_PASSWORD)
+          - --tlog-upload=false
+          - '{{inputs.parameters.image-with-digest}}'
+        env:
+          - name: COSIGN_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: cosign-keys
+                key: cosign.password
+          - name: REGISTRY_USER
+            valueFrom:
+              secretKeyRef:
+                name: cosign-harbor-login
+                key: username
+          - name: REGISTRY_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: cosign-harbor-login
+                key: password
+        volumeMounts:
+          - name: cosign-key
+            mountPath: /etc/cosign
+            readOnly: true
+      volumes:
         - name: cosign-key
           secret:
             secretName: cosign-keys
