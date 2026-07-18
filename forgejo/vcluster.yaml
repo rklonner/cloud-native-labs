@@ -1,0 +1,13 @@
+experimental:
+  docker:
+    ports:
+      # Forgejo HTTP NodePort 30080 -> http://localhost:3000
+      - "3000:30080"
+    enabled: true
+    registryProxy:
+      enabled: true
+
+controlPlane:
+  distro:
+    k8s:
+      enabled: true
