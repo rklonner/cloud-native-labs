@@ -12,6 +12,8 @@ vars:
 
   HARBOR_NAMESPACE: harbor
   HARBOR_CA_SECRET: lab-clone-build-push-sign-harbor-harbor-nginx
+  HARBOR_HOST: harbor.harbor.svc.cluster.local
+  KYVERNO_NAMESPACE: kyverno
   WORKFLOW_NAMESPACE: default
   COSIGN_PASSWORD: demo12345
 
@@ -234,7 +236,8 @@ tasks:
   kyverno:restart:root:
     desc: Restart the root-managed Kyverno admission controller to reload trust material
     cmds:
-      - task: kyverno:wait:root
+      - kubectl wait --for=create deployment/{{.KYVERNO_APP}}-admission-controller -n kyverno --timeout=180s
+      - kubectl -n kyverno rollout status deployment/{{.KYVERNO_APP}}-admission-controller --timeout=300s
       - kubectl -n kyverno rollout restart deployment/{{.KYVERNO_APP}}-admission-controller
       - kubectl -n kyverno rollout status deployment/{{.KYVERNO_APP}}-admission-controller --timeout=300s
 
@@ -246,8 +249,10 @@ tasks:
   harbor:trust-ca:root:only:
     desc: Trust the Harbor CA after root-managed bootstrap
     cmds:
+      - kubectl wait --for=create secret/{{.HARBOR_CA_SECRET}} -n {{.HARBOR_NAMESPACE}} --timeout=180s
       - ./scripts/trust-harbor-ca.sh {{.HARBOR_NAMESPACE}} {{.HARBOR_CA_SECRET}}
       - task: kyverno:restart:root
+      - ./scripts/verify-kyverno-harbor-ca.sh {{.KYVERNO_NAMESPACE}} {{.HARBOR_HOST}}
 
   harbor:trust-ca:root:
     desc: Trust the Harbor CA after root-managed bootstrap
@@ -316,8 +321,10 @@ tasks:
   harbor:trust-ca:only:
     desc: Copy Harbor CA into all vcluster node containers and refresh trust
     cmds:
+      - kubectl wait --for=create secret/{{.HARBOR_CA_SECRET}} -n {{.HARBOR_NAMESPACE}} --timeout=180s
       - ./scripts/trust-harbor-ca.sh {{.HARBOR_NAMESPACE}} {{.HARBOR_CA_SECRET}}
       - task: kyverno:restart
+      - ./scripts/verify-kyverno-harbor-ca.sh {{.KYVERNO_NAMESPACE}} {{.HARBOR_HOST}}
 
   harbor:trust-ca:
     desc: Copy Harbor CA into all vcluster node containers and refresh trust
