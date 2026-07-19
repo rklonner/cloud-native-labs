@@ -106,4 +106,53 @@ data:
   resource.customizations.health.external-secrets.io_SecretStore: *genericConditionHealth
   resource.customizations.health.external-secrets.io_PushSecret: *genericConditionHealth
   resource.customizations.health.external-secrets.io_ExternalSecret: *genericConditionHealth
-  resource.customizations.health.example.com_RazorApp: *genericConditionHealth
+  resource.customizations.health.example.com_RazorApp: |
+    hs = {}
+    hs.status = "Progressing"
+    hs.message = "Waiting for Crossplane reconciliation"
+
+    if obj.status == nil or obj.status.conditions == nil then
+      return hs
+    end
+
+    local synced = false
+    local ready_false_message = nil
+    local responsive_false_reason = nil
+
+    for _, condition in ipairs(obj.status.conditions) do
+      if condition.type == "Synced" and condition.status == "True" then
+        synced = true
+      end
+
+      if condition.type == "Ready" and condition.status == "True" then
+        hs.status = "Healthy"
+        hs.message = condition.message or "Composite resource is ready"
+      end
+
+      if condition.type == "Ready" and condition.status == "False" then
+        ready_false_message = condition.message
+      end
+
+      if condition.type == "Responsive" and condition.status == "False" then
+        responsive_false_reason = condition.reason
+      end
+
+      if condition.type == "Synced" and condition.status == "False" then
+        hs.status = "Degraded"
+        hs.message = condition.message or "Composite resource is not synced"
+        return hs
+      end
+    end
+
+    if synced and responsive_false_reason == "WatchCircuitOpen" then
+      hs.status = "Healthy"
+      hs.message = ready_false_message or "Composite resource converged; watch circuit opened due to event volume"
+      return hs
+    end
+
+    if ready_false_message ~= nil then
+      hs.status = "Progressing"
+      hs.message = ready_false_message
+    end
+
+    return hs
