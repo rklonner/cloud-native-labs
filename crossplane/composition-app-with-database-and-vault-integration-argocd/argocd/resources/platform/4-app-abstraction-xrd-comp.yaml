@@ -142,7 +142,12 @@ spec:
             apiVersion = "mssql.sql.m.crossplane.io/v1alpha1",
             kind = "Grant",
             metadata = {
-              name = observed_xr.spec.projectName + "-readonly-grant"
+              name = observed_xr.spec.projectName + "-readonly-grant",
+              annotations = {
+                # Allow a clean retry when the first grant attempt races the SQL user creation.
+                "crossplane.io/external-create-pending" = "",
+                "crossplane.io/external-create-failed" = ""
+              }
             }
             spec = {
               forProvider = {
@@ -161,7 +166,12 @@ spec:
             apiVersion = "mssql.sql.m.crossplane.io/v1alpha1",
             kind = "Grant",
             metadata = {
-              name = observed_xr.spec.projectName + "-readwrite-grant"
+              name = observed_xr.spec.projectName + "-readwrite-grant",
+              annotations = {
+                # Allow a clean retry when the first grant attempt races the SQL user creation.
+                "crossplane.io/external-create-pending" = "",
+                "crossplane.io/external-create-failed" = ""
+              }
             }
             spec = {
               forProvider = {
