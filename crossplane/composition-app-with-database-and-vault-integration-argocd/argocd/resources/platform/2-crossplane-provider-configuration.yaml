@@ -46,8 +46,9 @@ metadata:
   namespace: crossplane-system
 type: Opaque
 stringData:
-  # mssql cluster can be reached by container name as it was added to the docker kind network
-  endpoint: mssql-test
+  # From inside the Docker-backed vcluster, the host-published MSSQL port is
+  # reachable via the container network gateway.
+  endpoint: 172.22.0.1
   port: "1433"
   username: sa
   password: YourStrong!Passw0rd

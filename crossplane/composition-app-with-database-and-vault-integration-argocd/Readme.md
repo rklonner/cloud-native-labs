@@ -261,6 +261,45 @@ Why split it this way:
 * provider CRDs are installed asynchronously by Crossplane package controllers
 * applying provider configs or XRs too early causes Argo CD dry-run or sync failures
 * the phased layout gives Argo CD a clean dependency order
+* the Argo CD manifests in this lab configure ESO usage, but they do not install the ESO controller itself
+* bootstrap components such as ESO, Crossplane, and Vault are installed outside Argo CD first, then Argo CD manages the lab resources built on top of them
+
+### Automated bootstrap
+
+The easiest way to install this lab is through the included `Taskfile.yml`.
+
+Prerequisites on your machine:
+* `task`
+* `docker`
+* `kubectl`
+* `helm`
+* `vcluster`
+* `curl`
+
+Main commands:
+
+```bash
+# Create the full lab end-to-end
+task up
+
+# Show local UI endpoints
+task ui
+
+# Re-run verification
+task verify
+
+# Tear everything down
+task down
+```
+
+What `task up` does:
+* creates or reconnects the Docker-backed vcluster
+* starts the local MSSQL container and rewires the Crossplane MSSQL provider secret for the Docker-backed vcluster
+* installs and configures Argo CD for local access
+* installs ESO, Crossplane, and Vault
+* initializes Vault for the lab
+* applies the Argo CD root application
+* waits for the Argo CD child apps to become healthy
 
 ### Argo CD resources in this lab
 
@@ -269,6 +308,170 @@ Why split it this way:
 * Synced manifests: `argocd/resources/*`
 * Optional Argo CD config example: `argocd/optional/argocd-cm-crossplane-example.yaml`
 * Safer merge patch for `argocd-cm`: `argocd/optional/argocd-cm-merge-patch.yaml`
+* Optional local NodePort service: `argocd/optional/service-argocd-local.yaml`
+* Optional admin password secret: `argocd/optional/secret-argocd-admin-password.yaml`
+* Docker-backed vcluster config: `vcluster.yaml`
+
+### Optional vcluster setup
+
+If you want local browser access without repeated port-forwarding, this folder includes a vcluster config with fixed host port mappings:
+
+* Argo CD UI: `https://localhost:8000`
+* Vault UI/API: `http://localhost:8200`
+
+Both settings are required:
+* `vcluster.yaml` maps host port `8000` to node port `32080`
+* `argocd/optional/service-argocd-local.yaml` exposes Argo CD as `NodePort` `32080`
+* `vcluster.yaml` maps host port `8200` to node port `32200`
+* the Vault Helm install below exposes the Vault UI service as `NodePort` `32200`
+
+Create or reconnect the Docker-backed vcluster:
+
+```bash
+vcluster use driver docker
+
+# Create the vcluster
+vcluster create my-cluster --namespace vcluster-my-cluster -f vcluster.yaml
+
+# Switch kubectl to the vcluster context
+kubectl config use-context vcluster-docker_my-cluster
+```
+
+If the vcluster already exists:
+
+```bash
+vcluster use driver docker
+vcluster connect my-cluster --namespace vcluster-my-cluster
+kubectl config use-context vcluster-docker_my-cluster
+```
+
+If you change `vcluster.yaml` port mappings later, recreate the vcluster so the Docker host port mapping is applied.
+
+### Install Argo CD
+
+If Argo CD is not installed yet:
+
+```bash
+kubectl create namespace argocd
+kubectl apply --server-side -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# Wait until Argo CD is ready
+watch kubectl -n argocd get pods
+```
+
+Expose Argo CD through the fixed NodePort used by `vcluster.yaml`:
+
+```bash
+kubectl apply -f argocd/optional/service-argocd-local.yaml
+```
+
+Set the Argo CD admin login to `admin` / `admin`:
+
+```bash
+kubectl apply -f argocd/optional/secret-argocd-admin-password.yaml
+kubectl -n argocd rollout restart deployment argocd-server
+```
+
+Why server-side apply here:
+* the Argo CD install manifest contains large CRDs such as `applicationsets.argoproj.io`
+* plain `kubectl apply` stores the full last-applied manifest in annotations
+* that can exceed the Kubernetes annotation size limit and fail with `metadata.annotations: Too long`
+
+With the optional vcluster setup above, open:
+
+```text
+https://localhost:8000
+```
+
+Login:
+* username: `admin`
+* password: `admin`
+
+Without that vcluster setup, local access can still use port-forward:
+
+```bash
+kubectl -n argocd port-forward svc/argocd-server 8080:443
+```
+
+### Install External Secrets Operator
+
+Before syncing the lab through Argo CD, install ESO itself manually with Helm. The `platform` application in this lab only applies the RBAC and `SecretStore` resources that depend on ESO CRDs and controllers already existing.
+
+```bash
+helm repo add external-secrets https://charts.external-secrets.io
+helm repo update
+
+helm upgrade --install external-secrets external-secrets/external-secrets \
+  --namespace external-secrets \
+  --create-namespace \
+  --set installCRDs=true
+
+# Wait until ESO is ready
+watch kubectl -n external-secrets get pods
+```
+
+### Install Crossplane
+
+Before syncing the lab through Argo CD, install Crossplane manually as well.
+
+```bash
+helm repo add crossplane-stable https://charts.crossplane.io/stable
+helm repo update
+
+helm upgrade --install crossplane crossplane-stable/crossplane \
+  --namespace crossplane-system \
+  --create-namespace
+
+# Wait until Crossplane is ready
+watch kubectl -n crossplane-system get pods
+```
+
+### Install Vault
+
+Before syncing the lab through Argo CD, install Vault manually as well. The Crossplane provider config in this lab expects Vault to be reachable at `http://vault.vault.svc.cluster.local:8200`.
+
+```bash
+helm repo add hashicorp https://helm.releases.hashicorp.com
+helm repo update
+
+helm upgrade --install vault hashicorp/vault \
+  --namespace vault \
+  --create-namespace \
+  --set "server.dev.enabled=true" \
+  --set "ui.enabled=true" \
+  --set "ui.serviceType=NodePort" \
+  --set "ui.serviceNodePort=32200"
+
+# Wait until Vault is ready
+watch kubectl -n vault get pods
+```
+
+With the optional vcluster setup above, open the Vault UI directly:
+
+```text
+http://localhost:8200/ui/vault/auth
+```
+
+Login token:
+* `root`
+
+Prepare local Vault access and initialize the auth/secret engine used by this lab:
+
+```bash
+# With the vcluster host-port mapping, Vault is already reachable on localhost:8200.
+# Without that setup, port-forward Vault in a separate terminal if needed:
+# kubectl -n vault port-forward vault-0 8200:8200
+
+export VAULT_ADDR='http://localhost:8200'
+vault login
+
+vault auth enable --path=kubernetes kubernetes
+
+vault write auth/kubernetes/config \
+  kubernetes_host=https://kubernetes.default.svc.cluster.local
+
+vault secrets enable -path=projects kv-v2
+```
 
 ### Apply the root app
 
