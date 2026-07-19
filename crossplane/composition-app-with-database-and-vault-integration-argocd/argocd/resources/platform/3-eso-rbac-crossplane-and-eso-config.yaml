@@ -38,6 +38,8 @@ spec:
       path "projects/metadata/*" {
         capabilities = ["create", "update", "read", "delete", "list"]
       }
+  providerConfigRef:
+    name: default
 ---
 # Create a token based on the above policy
 apiVersion: vault.vault.upbound.io/v1alpha1
@@ -50,6 +52,8 @@ spec:
       - "eso-push-policy"
     renewable: true
     ttl: "720h"
+  providerConfigRef:
+    name: default
   writeConnectionSecretToRef:
     name: eso-secret-store-vault-token
     namespace: crossplane-system

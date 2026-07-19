@@ -21,6 +21,22 @@ spec:
       name: vault-creds
       key: credentials
 ---
+# Configure the non-"m." provider-vault resources used by the shared
+# platform Policy and Token objects. These resources default to
+# ProviderConfig.vault.upbound.io named "default" unless overridden.
+apiVersion: vault.upbound.io/v1beta1
+kind: ProviderConfig
+metadata:
+  name: default
+spec:
+  address: http://vault.vault.svc.cluster.local:8200
+  credentials:
+    source: Secret
+    secretRef:
+      namespace: crossplane-system
+      name: vault-creds
+      key: credentials
+---
 # Configure provider-sql
 # create secret to connect
 apiVersion: v1

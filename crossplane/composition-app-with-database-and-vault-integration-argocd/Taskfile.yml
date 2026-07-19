@@ -71,7 +71,12 @@ tasks:
   mssql:install:
     desc: Start the local MSSQL container and attach it to the kind network
     cmds:
-      - docker compose up -d
+      - |
+        if docker ps -a --filter name='^/{{.MSSQL_CONTAINER_NAME}}$' --format '{{"{{.Names}}"}}' | grep -qx '{{.MSSQL_CONTAINER_NAME}}'; then
+          docker start {{.MSSQL_CONTAINER_NAME}}
+        else
+          docker compose up -d
+        fi
       - |
         if docker network inspect kind >/dev/null 2>&1; then
           docker network connect kind {{.MSSQL_CONTAINER_NAME}} >/dev/null 2>&1 || true
@@ -102,7 +107,7 @@ tasks:
       - kubectl -n {{.ARGOCD_NAMESPACE}} rollout status statefulset/argocd-application-controller --timeout=300s
       - |
         for i in 1 2 3 4 5 6; do
-          curl -skI --max-time 10 {{.ARGOCD_SERVER_URL}}/ >/dev/null && exit 0
+          curl -sk --fail --max-time 10 {{.ARGOCD_SERVER_URL}}/ >/dev/null && exit 0
           sleep 5
         done
         exit 1
@@ -135,10 +140,13 @@ tasks:
       - helm repo add hashicorp https://helm.releases.hashicorp.com
       - helm repo update
       - helm upgrade --install vault hashicorp/vault --namespace {{.VAULT_NAMESPACE}} --create-namespace --set server.dev.enabled=true --set ui.enabled=true --set ui.serviceType=NodePort --set ui.serviceNodePort=32200
-      - kubectl -n {{.VAULT_NAMESPACE}} rollout status statefulset/vault --timeout=300s
+      - kubectl wait --for=condition=Ready pod/vault-0 -n {{.VAULT_NAMESPACE}} --timeout=300s
       - |
         for i in 1 2 3 4 5 6; do
-          curl --fail --max-time 10 {{.VAULT_ADDR}}/v1/sys/health >/dev/null && exit 0
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 {{.VAULT_ADDR}}/v1/sys/health || true)
+          if [ "$code" = "200" ] || [ "$code" = "429" ] || [ "$code" = "472" ] || [ "$code" = "473" ] || [ "$code" = "501" ]; then
+            exit 0
+          fi
           sleep 5
         done
         exit 1
@@ -163,7 +171,6 @@ tasks:
   lab:wait:
     desc: Wait for the lab Argo CD applications to become healthy
     cmds:
-      - task: lab:install
       - kubectl wait --for=create application/crossplane-razorapps-providers -n {{.ARGOCD_NAMESPACE}} --timeout=180s
       - kubectl wait --for=create application/crossplane-razorapps-platform -n {{.ARGOCD_NAMESPACE}} --timeout=180s
       - kubectl wait --for=create application/crossplane-razorapps-workloads -n {{.ARGOCD_NAMESPACE}} --timeout=180s
@@ -186,7 +193,6 @@ tasks:
   verify:
     desc: Run basic verification checks for the lab
     cmds:
-      - task: lab:wait
       - kubectl -n {{.ARGOCD_NAMESPACE}} get applications
       - kubectl -n blade get razorapps.example.com
       - kubectl -n aurora get razorapps.example.com
