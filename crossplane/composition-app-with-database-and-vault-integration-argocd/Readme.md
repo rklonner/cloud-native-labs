@@ -1,5 +1,7 @@
 # Crossplane - Abstract an application and infrastructure in a composition
 
+This lab focuses on deploying `RazorApp` projects through Argo CD, surfacing Crossplane-managed resources in the Argo CD UI, and adding custom health checks so Crossplane and External Secrets resources report useful Argo-compatible health.
+
 **Demonstrate**:
 * How to innstall and configure provider-vault, provider-sql and External Secrets Operator
 * How to use namespaced apis "m." of providers
