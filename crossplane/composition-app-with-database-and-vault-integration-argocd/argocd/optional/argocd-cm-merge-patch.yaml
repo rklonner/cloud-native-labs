@@ -118,6 +118,7 @@ data:
     local synced = false
     local ready_false_message = nil
     local responsive_false_reason = nil
+    local responsive_true = false
 
     for _, condition in ipairs(obj.status.conditions) do
       if condition.type == "Synced" and condition.status == "True" then
@@ -137,6 +138,10 @@ data:
         responsive_false_reason = condition.reason
       end
 
+      if condition.type == "Responsive" and condition.status == "True" then
+        responsive_true = true
+      end
+
       if condition.type == "Synced" and condition.status == "False" then
         hs.status = "Degraded"
         hs.message = condition.message or "Composite resource is not synced"
@@ -147,6 +152,12 @@ data:
     if synced and responsive_false_reason == "WatchCircuitOpen" then
       hs.status = "Healthy"
       hs.message = ready_false_message or "Composite resource converged; watch circuit opened due to event volume"
+      return hs
+    end
+
+    if synced and responsive_true and ready_false_message ~= nil then
+      hs.status = "Healthy"
+      hs.message = ready_false_message
       return hs
     end
 
