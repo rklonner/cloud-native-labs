@@ -197,9 +197,10 @@ tasks:
     cmds:
       - kubectl wait --for=create application/crossplane-razorapps-providers -n {{.ARGOCD_NAMESPACE}} --timeout=180s
       - kubectl wait --for=create application/crossplane-razorapps-platform -n {{.ARGOCD_NAMESPACE}} --timeout=180s
-      - kubectl wait --for=create application/crossplane-razorapps-workloads -n {{.ARGOCD_NAMESPACE}} --timeout=180s
+      - kubectl wait --for=create application/crossplane-razorapps-blade -n {{.ARGOCD_NAMESPACE}} --timeout=180s
+      - kubectl wait --for=create application/crossplane-razorapps-aurora -n {{.ARGOCD_NAMESPACE}} --timeout=180s
       - |
-        for app in crossplane-razorapps-providers crossplane-razorapps-platform crossplane-razorapps-workloads; do
+        for app in crossplane-razorapps-providers crossplane-razorapps-platform crossplane-razorapps-blade crossplane-razorapps-aurora; do
           for i in $(seq 1 36); do
             sync=$(kubectl -n {{.ARGOCD_NAMESPACE}} get application "$app" -o jsonpath='{.status.sync.status}' 2>/dev/null)
             health=$(kubectl -n {{.ARGOCD_NAMESPACE}} get application "$app" -o jsonpath='{.status.health.status}' 2>/dev/null)
@@ -224,6 +225,7 @@ tasks:
     desc: Run basic verification checks for the lab
     cmds:
       - kubectl -n {{.ARGOCD_NAMESPACE}} get applications
+      - kubectl -n {{.ARGOCD_NAMESPACE}} get application crossplane-razorapps-blade crossplane-razorapps-aurora
       - kubectl -n blade get razorapps.example.com
       - kubectl -n aurora get razorapps.example.com
 

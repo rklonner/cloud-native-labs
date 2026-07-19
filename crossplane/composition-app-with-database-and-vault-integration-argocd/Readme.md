@@ -255,7 +255,8 @@ docker volume rm <name-of-listed-volume>
 This copy of the lab includes an Argo CD layout under `argocd/` that splits the deployment into phases:
 * `providers`: installs the Crossplane providers and KCL function
 * `platform`: applies provider configs, ESO RBAC/config, and the RazorApp XRD/composition
-* `workloads`: creates the `blade` and `aurora` namespaces and their `RazorApp` XRs
+* `projects/blade`: creates the `blade` namespace and its `RazorApp` XR
+* `projects/aurora`: creates the `aurora` namespace and its `RazorApp` XR
 
 Why split it this way:
 * provider CRDs are installed asynchronously by Crossplane package controllers
@@ -504,8 +505,8 @@ kubectl patch configmap argocd-cm -n argocd --type merge --patch-file argocd/opt
 
 ### What you should see in the Argo CD UI
 
-For the `crossplane-razorapps-workloads` application:
-* immediate Git-managed resources: namespaces and `RazorApp` XRs
+For the project applications `crossplane-razorapps-blade` and `crossplane-razorapps-aurora`:
+* immediate Git-managed resources: that project's namespace and `RazorApp` XR
 * composed resources in the resource tree, attached to the owning application through annotation-based tracking once your Argo CD instance uses `application.resourceTrackingMethod: annotation`
 * health for many Crossplane, provider, and External Secrets resources based on `Ready`, `Synced`, `Installed`, and related conditions
 
