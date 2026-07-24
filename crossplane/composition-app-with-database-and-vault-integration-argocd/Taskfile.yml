@@ -31,11 +31,7 @@ tasks:
     cmds:
       - task: cluster:create
       - task: mssql:install
-      - task: argocd:ready
-      - task: eso:install
-      - task: crossplane:install
-      - task: vault:install
-      - task: vault:init
+      - task: bootstrap:parallel
       - task: lab:install
       - task: lab:wait
       - task: verify
@@ -95,6 +91,14 @@ tasks:
     cmds:
       - docker compose down
 
+  bootstrap:parallel:
+    desc: Install and wait for independent platform components in parallel
+    deps:
+      - argocd:ready
+      - eso:install
+      - crossplane:install
+      - vault:init
+
   argocd:install:
     desc: Install Argo CD and local access helpers
     status:
@@ -102,7 +106,6 @@ tasks:
       - kubectl -n {{.ARGOCD_NAMESPACE}} get service argocd-server-local >/dev/null 2>&1
       - kubectl -n {{.ARGOCD_NAMESPACE}} get secret argocd-secret >/dev/null 2>&1
     cmds:
-      - task: cluster:create
       - kubectl create namespace {{.ARGOCD_NAMESPACE}} || true
       - kubectl apply --server-side --force-conflicts -n {{.ARGOCD_NAMESPACE}} -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
       - kubectl apply -f {{.ARGOCD_LOCAL_SERVICE}}
@@ -131,7 +134,6 @@ tasks:
       - kubectl -n {{.ESO_NAMESPACE}} get deployment external-secrets-webhook >/dev/null 2>&1
       - kubectl -n {{.ESO_NAMESPACE}} get deployment external-secrets-cert-controller >/dev/null 2>&1
     cmds:
-      - task: cluster:create
       - helm repo add external-secrets https://charts.external-secrets.io
       - helm upgrade --install external-secrets external-secrets/external-secrets --namespace {{.ESO_NAMESPACE}} --create-namespace --set installCRDs=true
       - kubectl -n {{.ESO_NAMESPACE}} rollout status deployment/external-secrets --timeout=300s
@@ -144,7 +146,6 @@ tasks:
       - kubectl -n {{.CROSSPLANE_NAMESPACE}} get deployment crossplane >/dev/null 2>&1
       - kubectl -n {{.CROSSPLANE_NAMESPACE}} get deployment crossplane-rbac-manager >/dev/null 2>&1
     cmds:
-      - task: cluster:create
       - helm repo add crossplane-stable https://charts.crossplane.io/stable
       - helm upgrade --install crossplane crossplane-stable/crossplane --namespace {{.CROSSPLANE_NAMESPACE}} --create-namespace
       - kubectl -n {{.CROSSPLANE_NAMESPACE}} rollout status deployment/crossplane --timeout=300s
@@ -155,7 +156,6 @@ tasks:
     status:
       - kubectl -n {{.VAULT_NAMESPACE}} get statefulset vault >/dev/null 2>&1
     cmds:
-      - task: cluster:create
       - helm repo add hashicorp https://helm.releases.hashicorp.com
       - helm upgrade --install vault hashicorp/vault --namespace {{.VAULT_NAMESPACE}} --create-namespace --set server.dev.enabled=true --set ui.enabled=true --set ui.serviceType=NodePort --set ui.serviceNodePort=32200
       - kubectl wait --for=create pod -n {{.VAULT_NAMESPACE}} -l app.kubernetes.io/name=vault --timeout=300s
