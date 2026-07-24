@@ -120,12 +120,7 @@ tasks:
       - kubectl -n {{.ARGOCD_NAMESPACE}} rollout status deployment/argocd-server --timeout=300s
       - kubectl -n {{.ARGOCD_NAMESPACE}} rollout status deployment/argocd-repo-server --timeout=300s
       - kubectl -n {{.ARGOCD_NAMESPACE}} rollout status statefulset/argocd-application-controller --timeout=300s
-      - |
-        for i in 1 2 3 4 5 6; do
-          curl -sk --fail --max-time 10 {{.ARGOCD_SERVER_URL}}/ >/dev/null && exit 0
-          sleep 5
-        done
-        exit 1
+      - bash -lc 'for i in 1 2 3 4 5 6; do curl -sk --fail --max-time 10 "{{.ARGOCD_SERVER_URL}}/" >/dev/null && exit 0; sleep 5; done; exit 1'
 
   eso:install:
     desc: Install External Secrets Operator with Helm
@@ -160,15 +155,7 @@ tasks:
       - helm upgrade --install vault hashicorp/vault --namespace {{.VAULT_NAMESPACE}} --create-namespace --set server.dev.enabled=true --set ui.enabled=true --set ui.serviceType=NodePort --set ui.serviceNodePort=32200
       - kubectl wait --for=create pod -n {{.VAULT_NAMESPACE}} -l app.kubernetes.io/name=vault --timeout=300s
       - kubectl wait --for=condition=Ready pod -n {{.VAULT_NAMESPACE}} -l app.kubernetes.io/name=vault --timeout=300s
-      - |
-        for i in 1 2 3 4 5 6; do
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 {{.VAULT_ADDR}}/v1/sys/health || true)
-          if [ "$code" = "200" ] || [ "$code" = "429" ] || [ "$code" = "472" ] || [ "$code" = "473" ] || [ "$code" = "501" ]; then
-            exit 0
-          fi
-          sleep 5
-        done
-        exit 1
+      - bash -lc 'for i in 1 2 3 4 5 6; do code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "{{.VAULT_ADDR}}/v1/sys/health" || true); case "$code" in 200|429|472|473|501) exit 0 ;; esac; sleep 5; done; exit 1'
 
   vault:init:
     desc: Configure Vault Kubernetes auth and project KV engine
