@@ -184,20 +184,17 @@ spec:
                 }
               },
               type = "Opaque",
-              data = {
-                role.bindAs.connectionString.envVar = base64.encode(
-                  "sqlserver://"
-                  + base64.decode(ocds["user-" + role.name]?.ConnectionDetails?.username or "")
-                  + ":"
-                  + base64.decode(ocds["user-" + role.name]?.ConnectionDetails?.password or "")
-                  + "@"
-                  + base64.decode(ocds["user-" + role.name]?.ConnectionDetails?.endpoint or "")
-                  + ":"
-                  + base64.decode(ocds["user-" + role.name]?.ConnectionDetails?.port or "")
-                  + "?database="
-                  + full_db_name
-                )
-              }
+                data = {
+                  role.bindAs.connectionString.envVar = base64.encode(
+                    "sqlserver://{}:{}@{}:{}?database={}".format(
+                      base64.decode(ocds["user-" + role.name]?.ConnectionDetails?.username or ""),
+                      base64.decode(ocds["user-" + role.name]?.ConnectionDetails?.password or ""),
+                      base64.decode(ocds["user-" + role.name]?.ConnectionDetails?.endpoint or ""),
+                      base64.decode(ocds["user-" + role.name]?.ConnectionDetails?.port or ""),
+                      full_db_name,
+                    )
+                  )
+                }
             } for role in connection_bind_roles]
 
             vault_push_secrets = [{
