@@ -30,6 +30,10 @@ spec:
   forProvider:
     name: "eso-push-policy"
     policy: |
+      # ESO validates the Vault token with lookup-self before using it.
+      path "auth/token/lookup-self" {
+        capabilities = ["read"]
+      }
       # 1. Write access for the actual secret data
       path "projects/data/*" {
         capabilities = ["create", "update", "read", "delete", "list"]
