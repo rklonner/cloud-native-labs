@@ -16,6 +16,7 @@
     secretKeyRef:
       name: {{ printf "%s-%s-%s-app-connection" (include "unified-application.fullname" $root) $db.name $role.name }}
       key: {{ $role.bindAs.connectionString.envVar }}
+      optional: true
 {{- end }}
 {{- end }}
 {{- end }}
@@ -27,6 +28,7 @@
     secretKeyRef:
       name: {{ printf "%s-%s-%s-app-connection" (include "unified-application.fullname" $root) $access.name $role.name }}
       key: {{ $role.bindAs.connectionString.envVar }}
+      optional: true
 {{- end }}
 {{- end }}
 {{- end }}
@@ -37,6 +39,7 @@
     secretKeyRef:
       name: {{ default (printf "%s-%s" (include "unified-application.fullname" $root) $import.name) $import.bindAs.secretName }}
       key: {{ $import.bindAs.usernamePassword.envVars.username }}
+      optional: true
 {{- end }}
 {{- if and $import.bindAs.usernamePassword $import.bindAs.usernamePassword.envVars $import.bindAs.usernamePassword.envVars.password }}
 - name: {{ $import.bindAs.usernamePassword.envVars.password }}
@@ -44,6 +47,7 @@
     secretKeyRef:
       name: {{ default (printf "%s-%s" (include "unified-application.fullname" $root) $import.name) $import.bindAs.secretName }}
       key: {{ $import.bindAs.usernamePassword.envVars.password }}
+      optional: true
 {{- end }}
 {{- end }}
 {{- end -}}
