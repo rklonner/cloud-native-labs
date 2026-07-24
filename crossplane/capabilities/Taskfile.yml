@@ -31,6 +31,7 @@ vars:
   FORGEJO_BOOTSTRAP_PASSWORD: admin123
   FORGEJO_BOOTSTRAP_EMAIL: me@example.com
   FORGEJO_BOOTSTRAP_ORG: example-org
+  FORGEJO_SHARED_REPO: cloud-native-labs
   FORGEJO_REPOS_DIR: examples
 
 tasks:
@@ -47,6 +48,7 @@ tasks:
       - task: examples:init
       - task: forgejo:install
       - task: forgejo:bootstrap
+      - task: forgejo:mirror-shared
       - task: argocd:repo-creds
       - task: lab:install
       - task: lab:wait
@@ -196,6 +198,19 @@ tasks:
       - task: forgejo:install
       - task: examples:init
       - bash {{.FORGEJO_BOOTSTRAP_SCRIPT}} {{.FORGEJO_BOOTSTRAP_USER}} {{.FORGEJO_BOOTSTRAP_PASSWORD}} {{.FORGEJO_BOOTSTRAP_EMAIL}} {{.FORGEJO_BOOTSTRAP_ORG}} {{.FORGEJO_REPOS_DIR}}
+
+  forgejo:mirror-shared:
+    desc: Mirror the current monorepo to Forgejo for Argo CD
+    cmds:
+      - task: forgejo:bootstrap
+      - |
+        admin_token=$(kubectl -n {{.FORGEJO_NAMESPACE}} exec deploy/forgejo -- forgejo admin user generate-access-token --username gitea_admin --token-name shared-admin-$(date +%s) --raw)
+        user_token=$(kubectl -n {{.FORGEJO_NAMESPACE}} exec deploy/forgejo -- forgejo admin user generate-access-token --username {{.FORGEJO_BOOTSTRAP_USER}} --token-name shared-user-$(date +%s) --raw)
+        repo_status=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: token ${admin_token}" {{.FORGEJO_URL}}/api/v1/repos/{{.FORGEJO_BOOTSTRAP_ORG}}/{{.FORGEJO_SHARED_REPO}})
+        if [ "${repo_status}" -ne 200 ]; then
+          curl -fsS -X POST {{.FORGEJO_URL}}/api/v1/orgs/{{.FORGEJO_BOOTSTRAP_ORG}}/repos -H "accept: application/json" -H "Authorization: token ${admin_token}" -H "Content-Type: application/json" -d '{"name":"{{.FORGEJO_SHARED_REPO}}"}' >/dev/null
+        fi
+        git push http://{{.FORGEJO_BOOTSTRAP_USER}}:${user_token}@localhost:3000/{{.FORGEJO_BOOTSTRAP_ORG}}/{{.FORGEJO_SHARED_REPO}}.git HEAD:main
 
   examples:init:
     desc: Initialize the example overlay repos for Forgejo import

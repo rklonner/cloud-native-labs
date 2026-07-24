@@ -8,8 +8,8 @@ metadata:
 spec:
   project: default
   sources:
-    - repoURL: https://github.com/rklonner/cloud-native-labs.git
-      targetRevision: HEAD
+    - repoURL: http://forgejo-http.forgejo.svc.cluster.local:3000/example-org/cloud-native-labs.git
+      targetRevision: main
       path: crossplane/capabilities/unified-application
       helm:
         valueFiles:

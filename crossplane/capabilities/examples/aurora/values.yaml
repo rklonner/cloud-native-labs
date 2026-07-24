@@ -1,0 +1,38 @@
+nameOverride: aurora-api
+
+image:
+  repository: nginx
+  tag: "1.27"
+
+capabilities:
+  databases:
+    - name: catalog
+      providerConfigRef: mssql-local
+      roles:
+        - name: app
+          profile: readWrite
+          bindAs:
+            connectionString:
+              envVar: DATABASE_URL
+        - name: reporting
+          profile: readOnly
+          bindAs:
+            connectionString:
+              envVar: REPORTING_DATABASE_URL
+    - name: analytics
+      providerConfigRef: mssql-local
+      roles:
+        - name: app
+          profile: readWrite
+          bindAs:
+            connectionString:
+              envVar: ANALYTICS_DATABASE_URL
+  databaseAccess: []
+  secretImports:
+    - name: license
+      source:
+        vault:
+          path: aurora-api/external/license
+          secretStoreRef: vault-app-backend
+      bindAs:
+        secretName: aurora-api-license
