@@ -45,6 +45,7 @@ tasks:
       - task: crossplane:install
       - task: vault:install
       - task: vault:init
+      - task: vault:seed-demo-secrets
       - task: examples:init
       - task: forgejo:install
       - task: forgejo:bootstrap
@@ -182,6 +183,13 @@ tasks:
       - kubectl -n {{.VAULT_NAMESPACE}} exec vault-0 -- sh -c 'VAULT_ADDR=http://127.0.0.1:8200 vault auth list -format=json | grep -q '"'"'kubernetes/'"'"' || VAULT_ADDR=http://127.0.0.1:8200 vault auth enable --path=kubernetes kubernetes'
       - kubectl -n {{.VAULT_NAMESPACE}} exec vault-0 -- sh -c 'VAULT_ADDR=http://127.0.0.1:8200 vault write auth/kubernetes/config kubernetes_host=https://kubernetes.default.svc.cluster.local'
       - kubectl -n {{.VAULT_NAMESPACE}} exec vault-0 -- sh -c 'VAULT_ADDR=http://127.0.0.1:8200 vault secrets list -format=json | grep -q '"'"'projects/'"'"' || VAULT_ADDR=http://127.0.0.1:8200 vault secrets enable -path=projects kv-v2'
+
+  vault:seed-demo-secrets:
+    desc: Seed example Vault secrets used by the project overlays
+    cmds:
+      - task: vault:init
+      - kubectl -n {{.VAULT_NAMESPACE}} exec vault-0 -- sh -c 'VAULT_ADDR=http://127.0.0.1:8200 vault kv put projects/blade-api/external/sap-api username=sap-user password=sap-pass >/dev/null'
+      - kubectl -n {{.VAULT_NAMESPACE}} exec vault-0 -- sh -c 'VAULT_ADDR=http://127.0.0.1:8200 vault kv put projects/aurora-api/external/license license=trial >/dev/null'
 
   forgejo:install:
     desc: Install Forgejo with Helm

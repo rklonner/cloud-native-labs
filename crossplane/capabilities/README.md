@@ -87,7 +87,7 @@ Supported role profiles in this lab:
 
 If a new role with profile `readOnly` is added later and Argo CD syncs again, Crossplane reconciles the XR and creates the extra user and grant for the same target database.
 
-If `bindAs.connectionString.envVar` is set, the composition also creates an app-facing Kubernetes `Secret` that contains one key with that env var name and a derived MSSQL connection string value.
+If `bindAs.connectionString.envVar` is set, the composition also creates an app-facing Kubernetes `Secret` with a `connectionString` key, and the Deployment maps that value into the requested env var.
 
 For credentials created by Crossplane, the lab also publishes the raw provider secret into Vault with an automatically derived path:
 

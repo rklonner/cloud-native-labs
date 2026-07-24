@@ -139,7 +139,7 @@ spec:
               },
               type = "Opaque",
                 data = {
-                  role.bindAs.connectionString.envVar = base64.encode(
+                  connectionString = base64.encode(
                     "sqlserver://{}:{}@{}:{}?database={}".format(
                       base64.decode(ocds["user-" + role.name]?.ConnectionDetails?.username or ""),
                       base64.decode(ocds["user-" + role.name]?.ConnectionDetails?.password or ""),

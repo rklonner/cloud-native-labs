@@ -15,7 +15,7 @@
   valueFrom:
     secretKeyRef:
       name: {{ printf "%s-%s-%s-app-connection" (include "unified-application.fullname" $root) $db.name $role.name }}
-      key: {{ $role.bindAs.connectionString.envVar }}
+      key: connectionString
       optional: true
 {{- end }}
 {{- end }}
@@ -27,7 +27,7 @@
   valueFrom:
     secretKeyRef:
       name: {{ printf "%s-%s-%s-app-connection" (include "unified-application.fullname" $root) $access.name $role.name }}
-      key: {{ $role.bindAs.connectionString.envVar }}
+      key: connectionString
       optional: true
 {{- end }}
 {{- end }}
