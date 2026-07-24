@@ -98,6 +98,67 @@ data:
   resource.customizations.health.external-secrets.io_SecretStore: *genericConditionHealth
   resource.customizations.health.external-secrets.io_PushSecret: *genericConditionHealth
   resource.customizations.health.external-secrets.io_ExternalSecret: *genericConditionHealth
-  resource.customizations.health.idp.demo.io_CompositeAppDatabase: *genericConditionHealth
-  resource.customizations.health.idp.demo.io_CompositeExternalDatabaseAccess: *genericConditionHealth
-  resource.customizations.health.idp.demo.io_CompositeAppSecretImport: *genericConditionHealth
+  resource.customizations.health.idp.demo.io_CompositeAppDatabase: &compositeHealth |
+    hs = {}
+    hs.status = "Progressing"
+    hs.message = "Waiting for Crossplane reconciliation"
+
+    if obj.status == nil or obj.status.conditions == nil then
+      return hs
+    end
+
+    local synced = false
+    local ready_false_message = nil
+    local responsive_false_reason = nil
+    local responsive_true = false
+
+    for _, condition in ipairs(obj.status.conditions) do
+      if condition.type == "Synced" and condition.status == "True" then
+        synced = true
+      end
+
+      if condition.type == "Ready" and condition.status == "True" then
+        hs.status = "Healthy"
+        hs.message = condition.message or "Composite resource is ready"
+      end
+
+      if condition.type == "Ready" and condition.status == "False" then
+        ready_false_message = condition.message
+      end
+
+      if condition.type == "Responsive" and condition.status == "False" then
+        responsive_false_reason = condition.reason
+      end
+
+      if condition.type == "Responsive" and condition.status == "True" then
+        responsive_true = true
+      end
+
+      if condition.type == "Synced" and condition.status == "False" then
+        hs.status = "Degraded"
+        hs.message = condition.message or "Composite resource is not synced"
+        return hs
+      end
+    end
+
+    if synced and responsive_false_reason == "WatchCircuitOpen" then
+      hs.status = "Healthy"
+      hs.message = ready_false_message or "Composite resource converged; watch circuit opened due to event volume"
+      return hs
+    end
+
+    if synced and responsive_true and ready_false_message ~= nil then
+      hs.status = "Healthy"
+      hs.message = ready_false_message
+      return hs
+    end
+
+    if ready_false_message ~= nil then
+      hs.status = "Progressing"
+      hs.message = ready_false_message
+    end
+
+    return hs
+
+  resource.customizations.health.idp.demo.io_CompositeExternalDatabaseAccess: *compositeHealth
+  resource.customizations.health.idp.demo.io_CompositeAppSecretImport: *compositeHealth

@@ -40,6 +40,7 @@ tasks:
     cmds:
       - task: cluster:create
       - task: mssql:install
+      - task: mssql:seed-shared
       - task: argocd:ready
       - task: eso:install
       - task: crossplane:install
@@ -191,6 +192,11 @@ tasks:
       - kubectl -n {{.VAULT_NAMESPACE}} exec vault-0 -- sh -c 'VAULT_ADDR=http://127.0.0.1:8200 vault kv put projects/blade-api/external/sap-api username=sap-user password=sap-pass >/dev/null'
       - kubectl -n {{.VAULT_NAMESPACE}} exec vault-0 -- sh -c 'VAULT_ADDR=http://127.0.0.1:8200 vault kv put projects/aurora-api/external/license license=trial >/dev/null'
 
+  mssql:seed-shared:
+    desc: Seed shared MSSQL databases used by external access demos
+    cmds:
+      - docker exec {{.MSSQL_CONTAINER_NAME}} /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P "YourStrong!Passw0rd" -C -Q "IF DB_ID('shared-finance') IS NULL CREATE DATABASE [shared-finance];"
+
   forgejo:install:
     desc: Install Forgejo with Helm
     status:
@@ -244,14 +250,14 @@ tasks:
 
   lab:install:
     desc: Apply the root Argo CD application for this lab
-    status:
-      - kubectl -n {{.ARGOCD_NAMESPACE}} get application capabilities-root >/dev/null 2>&1
     cmds:
       - task: argocd:repo-creds
+      - task: forgejo:mirror-shared
       - task: eso:install
       - task: crossplane:install
       - task: vault:init
       - kubectl apply -f {{.ROOT_APP_MANIFEST}}
+      - kubectl -n {{.ARGOCD_NAMESPACE}} annotate application capabilities-root argocd.argoproj.io/refresh=hard --overwrite || true
 
   lab:wait:
     desc: Wait for the lab Argo CD applications to become healthy
@@ -259,8 +265,11 @@ tasks:
       - kubectl wait --for=create application/capabilities-platform -n {{.ARGOCD_NAMESPACE}} --timeout=180s
       - kubectl wait --for=create application/project-blade -n {{.ARGOCD_NAMESPACE}} --timeout=180s
       - kubectl wait --for=create application/project-aurora -n {{.ARGOCD_NAMESPACE}} --timeout=180s
+      - kubectl -n {{.ARGOCD_NAMESPACE}} annotate application capabilities-platform argocd.argoproj.io/refresh=hard --overwrite || true
+      - kubectl -n {{.ARGOCD_NAMESPACE}} annotate application project-blade argocd.argoproj.io/refresh=hard --overwrite || true
+      - kubectl -n {{.ARGOCD_NAMESPACE}} annotate application project-aurora argocd.argoproj.io/refresh=hard --overwrite || true
       - |
-        for app in capabilities-platform project-blade project-aurora; do
+        for app in capabilities-root capabilities-platform project-blade project-aurora; do
           for i in $(seq 1 36); do
             sync=$(kubectl -n {{.ARGOCD_NAMESPACE}} get application "$app" -o jsonpath='{.status.sync.status}' 2>/dev/null)
             health=$(kubectl -n {{.ARGOCD_NAMESPACE}} get application "$app" -o jsonpath='{.status.health.status}' 2>/dev/null)
