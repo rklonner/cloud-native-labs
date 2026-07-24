@@ -1,0 +1,29 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: project-blade
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  project: default
+  sources:
+    - repoURL: https://github.com/rklonner/cloud-native-labs.git
+      targetRevision: HEAD
+      path: crossplane/capabilities/unified-application
+      helm:
+        valueFiles:
+          - $values/values.yaml
+    - repoURL: http://forgejo-http.forgejo.svc.cluster.local:3000/example-org/blade.git
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: blade
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true

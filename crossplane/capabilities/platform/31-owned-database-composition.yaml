@@ -1,0 +1,323 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: compositeappdatabases.idp.demo.io
+spec:
+  compositeTypeRef:
+    apiVersion: idp.demo.io/v1alpha1
+    kind: CompositeAppDatabase
+  mode: Pipeline
+  pipeline:
+    - step: render-sql-resources
+      functionRef:
+        name: crossplane-contrib-function-kcl
+      input:
+        apiVersion: krm.kcl.dev/v1alpha1
+        kind: KCLInput
+        spec:
+          source: |
+            import base64
+
+            oxr = option("params").oxr
+            ocds = option("params").ocds
+
+            permission_profiles = {
+              "readOnly" = ["CONNECT", "SELECT"]
+              "readWrite" = [
+                "CREATE TABLE",
+                "ALTER",
+                "CONNECT",
+                "SELECT",
+                "INSERT",
+                "UPDATE",
+                "DELETE"
+              ]
+            }
+
+            app_name = oxr.spec.appName
+            db_name = oxr.spec.databaseName
+            provider_config = oxr.spec.providerConfigRef
+            target_namespace = oxr.spec.namespace or "default"
+            roles = oxr.spec.roles or []
+            vault_secret_store_name = "vault-app-backend"
+
+            full_db_name = app_name + "-" + db_name
+
+            connection_bind_roles = [role for role in roles if role.bindAs?.connectionString?.envVar]
+
+            db = {
+              apiVersion = "mssql.sql.m.crossplane.io/v1alpha1",
+              kind = "Database",
+              metadata = {
+                name = full_db_name,
+                namespace = target_namespace,
+                annotations = {
+                  "krm.kcl.dev/composition-resource-name" = "database"
+                }
+              },
+              spec = {
+                providerConfigRef = {
+                  name = provider_config,
+                  kind = "ClusterProviderConfig"
+                }
+              }
+            }
+
+            users = [{
+              apiVersion = "mssql.sql.m.crossplane.io/v1alpha1",
+              kind = "User",
+              metadata = {
+                name = full_db_name + "-" + role.name,
+                namespace = target_namespace,
+                annotations = {
+                  "krm.kcl.dev/composition-resource-name" = "user-" + role.name
+                }
+              },
+              spec = {
+                forProvider = {
+                  # Keep the server login anchored to master so deleting the app
+                  # database does not leave a stale default database on re-create.
+                  loginDatabase = "master",
+                  database = full_db_name
+                },
+                providerConfigRef = {
+                  name = provider_config,
+                  kind = "ClusterProviderConfig"
+                },
+                writeConnectionSecretToRef = {
+                  name = full_db_name + "-" + role.name + "-secret"
+                }
+              }
+            } for role in roles]
+
+            grants = [{
+              apiVersion = "mssql.sql.m.crossplane.io/v1alpha1",
+              kind = "Grant",
+              metadata = {
+                name = full_db_name + "-" + role.name + "-grant",
+                namespace = target_namespace,
+                annotations = {
+                  "krm.kcl.dev/composition-resource-name" = "grant-" + role.name
+                }
+              },
+              spec = {
+                forProvider = {
+                  database = full_db_name,
+                  user = full_db_name + "-" + role.name,
+                  permissions = permission_profiles[role.profile]
+                },
+                providerConfigRef = {
+                  name = provider_config,
+                  kind = "ClusterProviderConfig"
+                }
+              }
+            } for role in roles]
+
+            # provider-sql needs explicit dependency protection for safe teardown:
+            # database -> user -> grant
+            database_usages = [{
+              apiVersion = "protection.crossplane.io/v1beta1",
+              kind = "Usage",
+              metadata = {
+                name = full_db_name + "-db-used-by-" + role.name,
+                namespace = target_namespace,
+                annotations = {
+                  "krm.kcl.dev/composition-resource-name" = "db-used-by-" + role.name
+                }
+              },
+              spec = {
+                replayDeletion = True,
+                of = {
+                  apiVersion = db.apiVersion,
+                  kind = db.kind,
+                  resourceRef = {
+                    name = db.metadata.name
+                  }
+                },
+                by = {
+                  apiVersion = "mssql.sql.m.crossplane.io/v1alpha1",
+                  kind = "User",
+                  resourceRef = {
+                    name = full_db_name + "-" + role.name
+                  }
+                }
+              }
+            } for role in roles]
+
+            grant_usages = [{
+              apiVersion = "protection.crossplane.io/v1beta1",
+              kind = "Usage",
+              metadata = {
+                name = full_db_name + "-" + role.name + "-used-by-grant",
+                namespace = target_namespace,
+                annotations = {
+                  "krm.kcl.dev/composition-resource-name" = role.name + "-used-by-grant"
+                }
+              },
+              spec = {
+                replayDeletion = True,
+                of = {
+                  apiVersion = "mssql.sql.m.crossplane.io/v1alpha1",
+                  kind = "User",
+                  resourceRef = {
+                    name = full_db_name + "-" + role.name
+                  }
+                },
+                by = {
+                  apiVersion = "mssql.sql.m.crossplane.io/v1alpha1",
+                  kind = "Grant",
+                  resourceRef = {
+                    name = full_db_name + "-" + role.name + "-grant"
+                  }
+                }
+              }
+            } for role in roles]
+
+            connection_secrets = [{
+              apiVersion = "v1",
+              kind = "Secret",
+              metadata = {
+                name = full_db_name + "-" + role.name + "-app-connection",
+                namespace = target_namespace,
+                annotations = {
+                  "krm.kcl.dev/composition-resource-name" = "app-connection-" + role.name
+                }
+              },
+              type = "Opaque",
+              data = {
+                role.bindAs.connectionString.envVar = base64.encode(
+                  "sqlserver://"
+                  + base64.decode(ocds["user-" + role.name]?.ConnectionDetails?.username or "")
+                  + ":"
+                  + base64.decode(ocds["user-" + role.name]?.ConnectionDetails?.password or "")
+                  + "@"
+                  + base64.decode(ocds["user-" + role.name]?.ConnectionDetails?.endpoint or "")
+                  + ":"
+                  + base64.decode(ocds["user-" + role.name]?.ConnectionDetails?.port or "")
+                  + "?database="
+                  + full_db_name
+                )
+              }
+            } for role in connection_bind_roles]
+
+            vault_push_secrets = [{
+              apiVersion = "external-secrets.io/v1alpha1",
+              kind = "PushSecret",
+              metadata = {
+                name = full_db_name + "-" + role.name + "-to-vault",
+                namespace = target_namespace,
+                annotations = {
+                  "krm.kcl.dev/composition-resource-name" = "vault-push-" + role.name
+                }
+              },
+              spec = {
+                secretStoreRefs = [{
+                  name = vault_secret_store_name,
+                  kind = "ClusterSecretStore"
+                }],
+                updatePolicy = "Replace",
+                deletionPolicy = "Delete",
+                selector = {
+                  secret = {
+                    name = full_db_name + "-" + role.name + "-secret"
+                  }
+                },
+                data = [{
+                  match = {
+                    secretKey = "",
+                    remoteRef = {
+                      remoteKey = app_name + "/databases/" + db_name + "/" + role.name
+                    }
+                  }
+                }]
+              }
+            } for role in roles]
+
+            user_used_by_connection_secret = [{
+              apiVersion = "protection.crossplane.io/v1beta1",
+              kind = "Usage",
+              metadata = {
+                name = full_db_name + "-" + role.name + "-used-by-app-connection",
+                namespace = target_namespace,
+                annotations = {
+                  "krm.kcl.dev/composition-resource-name" = role.name + "-used-by-app-connection"
+                }
+              },
+              spec = {
+                replayDeletion = True,
+                of = {
+                  apiVersion = "mssql.sql.m.crossplane.io/v1alpha1",
+                  kind = "User",
+                  resourceRef = {
+                    name = full_db_name + "-" + role.name
+                  }
+                },
+                by = {
+                  apiVersion = "v1",
+                  kind = "Secret",
+                  resourceRef = {
+                    name = full_db_name + "-" + role.name + "-app-connection"
+                  }
+                }
+              }
+            } for role in connection_bind_roles]
+
+            secret_store_used_by_vault_push = [{
+              apiVersion = "protection.crossplane.io/v1beta1",
+              kind = "Usage",
+              metadata = {
+                name = full_db_name + "-vault-store-used-by-" + role.name,
+                namespace = target_namespace,
+                annotations = {
+                  "krm.kcl.dev/composition-resource-name" = "vault-store-used-by-" + role.name
+                }
+              },
+              spec = {
+                replayDeletion = True,
+                of = {
+                  apiVersion = "external-secrets.io/v1",
+                  kind = "ClusterSecretStore",
+                  resourceRef = {
+                    name = vault_secret_store_name
+                  }
+                },
+                by = {
+                  apiVersion = "external-secrets.io/v1alpha1",
+                  kind = "PushSecret",
+                  resourceRef = {
+                    name = full_db_name + "-" + role.name + "-to-vault"
+                  }
+                }
+              }
+            } for role in roles]
+
+            user_used_by_vault_push = [{
+              apiVersion = "protection.crossplane.io/v1beta1",
+              kind = "Usage",
+              metadata = {
+                name = full_db_name + "-vault-push-uses-" + role.name,
+                namespace = target_namespace,
+                annotations = {
+                  "krm.kcl.dev/composition-resource-name" = "vault-push-uses-" + role.name
+                }
+              },
+              spec = {
+                replayDeletion = True,
+                of = {
+                  apiVersion = "mssql.sql.m.crossplane.io/v1alpha1",
+                  kind = "User",
+                  resourceRef = {
+                    name = full_db_name + "-" + role.name
+                  }
+                },
+                by = {
+                  apiVersion = "external-secrets.io/v1alpha1",
+                  kind = "PushSecret",
+                  resourceRef = {
+                    name = full_db_name + "-" + role.name + "-to-vault"
+                  }
+                }
+              }
+            } for role in roles]
+
+            [db] + users + grants + database_usages + grant_usages + connection_secrets + vault_push_secrets + user_used_by_connection_secret + secret_store_used_by_vault_push + user_used_by_vault_push

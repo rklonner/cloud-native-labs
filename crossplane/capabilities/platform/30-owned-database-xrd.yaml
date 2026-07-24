@@ -1,0 +1,61 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: compositeappdatabases.idp.demo.io
+spec:
+  scope: Namespaced
+  group: idp.demo.io
+  names:
+    kind: CompositeAppDatabase
+    plural: compositeappdatabases
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - appName
+                - databaseName
+                - providerConfigRef
+                - roles
+              properties:
+                appName:
+                  type: string
+                databaseName:
+                  type: string
+                namespace:
+                  type: string
+                providerConfigRef:
+                  type: string
+                roles:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      - name
+                      - profile
+                    properties:
+                      name:
+                        type: string
+                      profile:
+                        type: string
+                      bindAs:
+                        type: object
+                        properties:
+                          connectionString:
+                            type: object
+                            required:
+                              - envVar
+                            properties:
+                              envVar:
+                                type: string
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string

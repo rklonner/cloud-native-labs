@@ -1,0 +1,29 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: crossplane-external-secrets-admin
+rules:
+  - apiGroups: ["external-secrets.io"]
+    resources:
+      - secretstores
+      - secretstores/status
+      - clustersecretstores
+      - clustersecretstores/status
+      - externalsecrets
+      - externalsecrets/status
+      - pushsecrets
+      - pushsecrets/status
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: crossplane-external-secrets-admin-binding
+subjects:
+  - kind: ServiceAccount
+    name: crossplane
+    namespace: crossplane-system
+roleRef:
+  kind: ClusterRole
+  name: crossplane-external-secrets-admin
+  apiGroup: rbac.authorization.k8s.io

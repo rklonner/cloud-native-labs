@@ -43,16 +43,19 @@ exec_forgejo() {
   kubectl -n "$NAMESPACE" exec "$pod" -c "$CONTAINER_NAME" -- forgejo "$@"
 }
 
+admin_token=$(exec_forgejo admin user generate-access-token --username gitea_admin --token-name "admin-$(date +%s)" --raw)
+
 # Check if user exists.
 if exec_forgejo admin user list | tail -n +2 | tr -s ' ' | cut -d ' ' -f 2 | grep -Fxq "$USERNAME"; then
   echo "User '$USERNAME' already exists, updating password."
   exec_forgejo admin user change-password --username "$USERNAME" --password "$PASSWORD"
+  exec_forgejo admin user must-change-password --unset "$USERNAME"
 else
   exec_forgejo admin user create --username "$USERNAME" --password "$PASSWORD" --email "$EMAIL" --must-change-password=false
 fi
 
-# Create random token name.
-TOKEN_NAME="access-$(tr -dc A-Za-z0-9 </dev/urandom | head -c 8)"
+# Create a random token name without an early-closing pipe.
+TOKEN_NAME="access-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
 
 # Create token using raw output for reliable scripting.
 token=$(exec_forgejo admin user generate-access-token --username "$USERNAME" --token-name "$TOKEN_NAME" --raw)
@@ -60,14 +63,14 @@ echo "Forgejo Access Token: $token (token name: $TOKEN_NAME)"
 
 # Check if organization exists.
 ORG_CHECK_URL="$FORGEJO_URL/api/v1/orgs/$ORGNAME"
-org_status=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token $token" "$ORG_CHECK_URL")
+org_status=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token $admin_token" "$ORG_CHECK_URL")
 if [ "$org_status" -eq 200 ]; then
   echo "Organization '$ORGNAME' already exists, skipping creation."
 else
-  echo "[INFO] Creating organization '$ORGNAME' via API..."
-  curl -fsS -X POST "$FORGEJO_URL/api/v1/orgs" \
+  echo "[INFO] Creating organization '$ORGNAME' via admin API for user '$USERNAME'..."
+  curl -fsS -X POST "$FORGEJO_URL/api/v1/admin/users/$USERNAME/orgs" \
     -H "accept: application/json" \
-    -H "Authorization: token $token" \
+    -H "Authorization: token $admin_token" \
     -H "Content-Type: application/json" \
     -d "{\"username\": \"$ORGNAME\", \"description\": \"Testorg\"}"
   printf '\n'
@@ -81,19 +84,15 @@ if [ "$#" -eq 5 ]; then
     repo=$(basename "$repo_path")
     echo "$repo"
 
-    curl -fsS -X POST "$FORGEJO_URL/api/v1/user/repos" \
-      -H "accept: application/json" \
-      -H "Authorization: token $token" \
-      -H "Content-Type: application/json" \
-      -d "{\"name\": \"$repo\"}"
-    printf '\n'
-
-    curl -fsS -X POST "$FORGEJO_URL/api/v1/repos/$USERNAME/$repo/transfer" \
-      -H "accept: application/json" \
-      -H "Authorization: token $token" \
-      -H "Content-Type: application/json" \
-      -d "{\"new_owner\": \"$ORGNAME\"}"
-    printf '\n'
+    repo_status=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token $admin_token" "$FORGEJO_URL/api/v1/repos/$ORGNAME/$repo")
+    if [ "$repo_status" -ne 200 ]; then
+      curl -fsS -X POST "$FORGEJO_URL/api/v1/orgs/$ORGNAME/repos" \
+        -H "accept: application/json" \
+        -H "Authorization: token $admin_token" \
+        -H "Content-Type: application/json" \
+        -d "{\"name\": \"$repo\"}"
+      printf '\n'
+    fi
 
     push_url="${FORGEJO_URL/http:\/\//http://$USERNAME:$token@}"
     push_url="${push_url/https:\/\//https://$USERNAME:$token@}"

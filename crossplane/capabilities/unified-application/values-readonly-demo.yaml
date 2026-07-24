@@ -1,0 +1,58 @@
+nameOverride: orders-api
+
+image:
+  repository: nginx
+  tag: "1.27"
+
+capabilities:
+  databases:
+    - name: orders
+      providerConfigRef: mssql-local
+      roles:
+        - name: app
+          profile: readWrite
+          bindAs:
+            connectionString:
+              envVar: DATABASE_URL
+        - name: reporting
+          profile: readOnly
+          bindAs:
+            connectionString:
+              envVar: REPORTING_DATABASE_URL
+    - name: reporting
+      providerConfigRef: mssql-local
+      roles:
+        - name: app
+          profile: readWrite
+          bindAs:
+            connectionString:
+              envVar: REPORTING_WRITER_DATABASE_URL
+  databaseAccess:
+    - name: finance-ro
+      providerConfigRef: mssql-local
+      target:
+        databaseName: shared-finance
+      roles:
+        - name: reporting
+          profile: readOnly
+          bindAs:
+            connectionString:
+              envVar: FINANCE_DATABASE_URL
+  secretImports:
+    - name: sap-api
+      source:
+        vault:
+          path: orders-api/external/sap-api
+          secretStoreRef: vault-app-backend
+      bindAs:
+        usernamePassword:
+          envVars:
+            username: SAP_API_USERNAME
+            password: SAP_API_PASSWORD
+    - name: legacy-license
+      source:
+        vault:
+          path: orders-api/external/license
+          secretStoreRef: vault-app-backend
+      bindAs:
+        secretName: orders-api-license

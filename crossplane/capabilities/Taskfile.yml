@@ -1,0 +1,272 @@
+version: '3'
+
+vars:
+  VCLUSTER_NAME: my-cluster
+  VCLUSTER_NAMESPACE: vcluster-{{.VCLUSTER_NAME}}
+  VCLUSTER_CONTEXT: vcluster-docker_{{.VCLUSTER_NAME}}
+  VCLUSTER_VALUES_FILE: vcluster.yaml
+  VCLUSTER_TIMEOUT: 60s
+
+  ARGOCD_NAMESPACE: argocd
+  CROSSPLANE_NAMESPACE: crossplane-system
+  ESO_NAMESPACE: external-secrets
+  VAULT_NAMESPACE: vault
+  FORGEJO_NAMESPACE: forgejo
+
+  MSSQL_CONTAINER_NAME: mssql-test
+  MSSQL_COMPOSE_FILE: ../composition-app-with-database-and-vault-integration-argocd/docker-compose.yaml
+  VCLUSTER_DOCKER_CONTAINER: vcluster.cp.{{.VCLUSTER_NAME}}
+  FORGEJO_URL: http://localhost:3000
+  ARGOCD_SERVER_URL: https://localhost:8000
+  VAULT_ADDR: http://localhost:8200
+
+  ARGOCD_LOCAL_SERVICE: bootstrap/argocd/service-argocd-local.yaml
+  ARGOCD_ADMIN_SECRET: bootstrap/argocd/secret-argocd-admin-password.yaml
+  ARGOCD_CM_PATCH: bootstrap/argocd/argocd-cm-merge-patch.yaml
+  ARGOCD_REPO_CREDS: bootstrap/argocd/secret-argocd-forgejo-repo-creds.yaml
+  ROOT_APP_MANIFEST: bootstrap/argocd/root-application.yaml
+
+  FORGEJO_BOOTSTRAP_SCRIPT: ../../forgejo/bootstrap.sh
+  FORGEJO_BOOTSTRAP_USER: lab-admin
+  FORGEJO_BOOTSTRAP_PASSWORD: admin123
+  FORGEJO_BOOTSTRAP_EMAIL: me@example.com
+  FORGEJO_BOOTSTRAP_ORG: example-org
+  FORGEJO_REPOS_DIR: examples
+
+tasks:
+  up:
+    desc: Create the capabilities lab end-to-end
+    cmds:
+      - task: cluster:create
+      - task: mssql:install
+      - task: argocd:ready
+      - task: eso:install
+      - task: crossplane:install
+      - task: vault:install
+      - task: vault:init
+      - task: examples:init
+      - task: forgejo:install
+      - task: forgejo:bootstrap
+      - task: argocd:repo-creds
+      - task: lab:install
+      - task: lab:wait
+      - task: verify
+
+  down:
+    desc: Delete the vcluster and MSSQL container stack
+    cmds:
+      - task: mssql:delete
+      - task: cluster:delete
+
+  cluster:create:
+    desc: Create or reconnect the Docker-backed vcluster
+    cmds:
+      - vcluster use driver docker
+      - |
+        if docker ps --format '{{"{{.Names}}"}}' | grep -qx '{{.VCLUSTER_DOCKER_CONTAINER}}'; then
+          timeout {{.VCLUSTER_TIMEOUT}} vcluster connect {{.VCLUSTER_NAME}} --namespace {{.VCLUSTER_NAMESPACE}}
+        else
+          timeout {{.VCLUSTER_TIMEOUT}} vcluster create {{.VCLUSTER_NAME}} --namespace {{.VCLUSTER_NAMESPACE}} -f {{.VCLUSTER_VALUES_FILE}}
+        fi
+      - kubectl config use-context {{.VCLUSTER_CONTEXT}}
+
+  cluster:delete:
+    desc: Delete the Docker-backed vcluster
+    cmds:
+      - vcluster use driver docker
+      - vcluster delete {{.VCLUSTER_NAME}} --namespace {{.VCLUSTER_NAMESPACE}} --ignore-not-found
+
+  mssql:install:
+    desc: Start the local MSSQL container and attach it to the kind network
+    cmds:
+      - |
+        if docker ps -a --filter name='^/{{.MSSQL_CONTAINER_NAME}}$' --format '{{"{{.Names}}"}}' | grep -qx '{{.MSSQL_CONTAINER_NAME}}'; then
+          docker start {{.MSSQL_CONTAINER_NAME}}
+        else
+          docker compose -f {{.MSSQL_COMPOSE_FILE}} up -d
+        fi
+      - |
+        if docker network inspect kind >/dev/null 2>&1; then
+          docker network connect kind {{.MSSQL_CONTAINER_NAME}} >/dev/null 2>&1 || true
+        fi
+
+  mssql:delete:
+    desc: Stop the local MSSQL container stack
+    cmds:
+      - docker compose -f {{.MSSQL_COMPOSE_FILE}} down
+
+  argocd:install:
+    desc: Install Argo CD and local access helpers
+    status:
+      - kubectl -n {{.ARGOCD_NAMESPACE}} get deployment argocd-server >/dev/null 2>&1
+      - kubectl -n {{.ARGOCD_NAMESPACE}} get service argocd-server-local >/dev/null 2>&1
+      - kubectl -n {{.ARGOCD_NAMESPACE}} get secret argocd-secret >/dev/null 2>&1
+    cmds:
+      - task: cluster:create
+      - kubectl create namespace {{.ARGOCD_NAMESPACE}} || true
+      - kubectl apply --server-side --force-conflicts -n {{.ARGOCD_NAMESPACE}} -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+      - kubectl apply -f {{.ARGOCD_LOCAL_SERVICE}}
+      - kubectl apply -f {{.ARGOCD_ADMIN_SECRET}}
+      - kubectl patch configmap argocd-cm -n {{.ARGOCD_NAMESPACE}} --type merge --patch-file {{.ARGOCD_CM_PATCH}}
+      - kubectl -n {{.ARGOCD_NAMESPACE}} rollout restart deployment argocd-server
+
+  argocd:ready:
+    desc: Wait for Argo CD and verify local UI access
+    cmds:
+      - task: argocd:install
+      - kubectl -n {{.ARGOCD_NAMESPACE}} rollout status deployment/argocd-server --timeout=300s
+      - kubectl -n {{.ARGOCD_NAMESPACE}} rollout status deployment/argocd-repo-server --timeout=300s
+      - kubectl -n {{.ARGOCD_NAMESPACE}} rollout status statefulset/argocd-application-controller --timeout=300s
+      - |
+        for i in 1 2 3 4 5 6; do
+          curl -sk --fail --max-time 10 {{.ARGOCD_SERVER_URL}}/ >/dev/null && exit 0
+          sleep 5
+        done
+        exit 1
+
+  eso:install:
+    desc: Install External Secrets Operator with Helm
+    status:
+      - kubectl -n {{.ESO_NAMESPACE}} get deployment external-secrets >/dev/null 2>&1
+      - kubectl -n {{.ESO_NAMESPACE}} get deployment external-secrets-webhook >/dev/null 2>&1
+      - kubectl -n {{.ESO_NAMESPACE}} get deployment external-secrets-cert-controller >/dev/null 2>&1
+    cmds:
+      - task: cluster:create
+      - helm repo add external-secrets https://charts.external-secrets.io
+      - helm upgrade --install external-secrets external-secrets/external-secrets --namespace {{.ESO_NAMESPACE}} --create-namespace --set installCRDs=true
+      - kubectl -n {{.ESO_NAMESPACE}} rollout status deployment/external-secrets --timeout=300s
+      - kubectl -n {{.ESO_NAMESPACE}} rollout status deployment/external-secrets-webhook --timeout=300s
+      - kubectl -n {{.ESO_NAMESPACE}} rollout status deployment/external-secrets-cert-controller --timeout=300s
+
+  crossplane:install:
+    desc: Install Crossplane with Helm
+    status:
+      - kubectl -n {{.CROSSPLANE_NAMESPACE}} get deployment crossplane >/dev/null 2>&1
+      - kubectl -n {{.CROSSPLANE_NAMESPACE}} get deployment crossplane-rbac-manager >/dev/null 2>&1
+    cmds:
+      - task: cluster:create
+      - helm repo add crossplane-stable https://charts.crossplane.io/stable
+      - helm upgrade --install crossplane crossplane-stable/crossplane --namespace {{.CROSSPLANE_NAMESPACE}} --create-namespace
+      - kubectl -n {{.CROSSPLANE_NAMESPACE}} rollout status deployment/crossplane --timeout=300s
+      - kubectl -n {{.CROSSPLANE_NAMESPACE}} rollout status deployment/crossplane-rbac-manager --timeout=300s
+
+  vault:install:
+    desc: Install Vault with local UI access
+    status:
+      - kubectl -n {{.VAULT_NAMESPACE}} get statefulset vault >/dev/null 2>&1
+    cmds:
+      - task: cluster:create
+      - helm repo add hashicorp https://helm.releases.hashicorp.com
+      - helm upgrade --install vault hashicorp/vault --namespace {{.VAULT_NAMESPACE}} --create-namespace --set server.dev.enabled=true --set ui.enabled=true --set ui.serviceType=NodePort --set ui.serviceNodePort=32200
+      - kubectl wait --for=create pod -n {{.VAULT_NAMESPACE}} -l app.kubernetes.io/name=vault --timeout=300s
+      - kubectl wait --for=condition=Ready pod -n {{.VAULT_NAMESPACE}} -l app.kubernetes.io/name=vault --timeout=300s
+      - |
+        for i in 1 2 3 4 5 6; do
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 {{.VAULT_ADDR}}/v1/sys/health || true)
+          if [ "$code" = "200" ] || [ "$code" = "429" ] || [ "$code" = "472" ] || [ "$code" = "473" ] || [ "$code" = "501" ]; then
+            exit 0
+          fi
+          sleep 5
+        done
+        exit 1
+
+  vault:init:
+    desc: Configure Vault Kubernetes auth and project KV engine
+    status:
+      - kubectl -n {{.VAULT_NAMESPACE}} exec vault-0 -- sh -c 'VAULT_ADDR=http://127.0.0.1:8200 vault auth list -format=json | grep -q '"'"'kubernetes/'"'"''
+      - kubectl -n {{.VAULT_NAMESPACE}} exec vault-0 -- sh -c 'VAULT_ADDR=http://127.0.0.1:8200 vault secrets list -format=json | grep -q '"'"'projects/'"'"''
+    cmds:
+      - task: vault:install
+      - kubectl -n {{.VAULT_NAMESPACE}} exec vault-0 -- sh -c 'VAULT_ADDR=http://127.0.0.1:8200 vault auth list -format=json | grep -q '"'"'kubernetes/'"'"' || VAULT_ADDR=http://127.0.0.1:8200 vault auth enable --path=kubernetes kubernetes'
+      - kubectl -n {{.VAULT_NAMESPACE}} exec vault-0 -- sh -c 'VAULT_ADDR=http://127.0.0.1:8200 vault write auth/kubernetes/config kubernetes_host=https://kubernetes.default.svc.cluster.local'
+      - kubectl -n {{.VAULT_NAMESPACE}} exec vault-0 -- sh -c 'VAULT_ADDR=http://127.0.0.1:8200 vault secrets list -format=json | grep -q '"'"'projects/'"'"' || VAULT_ADDR=http://127.0.0.1:8200 vault secrets enable -path=projects kv-v2'
+
+  forgejo:install:
+    desc: Install Forgejo with Helm
+    status:
+      - kubectl -n {{.FORGEJO_NAMESPACE}} get deployment forgejo >/dev/null 2>&1
+    cmds:
+      - task: cluster:create
+      - helm upgrade --install forgejo oci://code.forgejo.org/forgejo-helm/forgejo --namespace {{.FORGEJO_NAMESPACE}} --create-namespace --set service.http.type=NodePort --set service.http.nodePort=30080 --set gitea.admin.username=gitea_admin --set gitea.admin.password=admin --set image.tag=16.0.0
+      - kubectl -n {{.FORGEJO_NAMESPACE}} rollout status deployment/forgejo --timeout=300s
+
+  forgejo:bootstrap:
+    desc: Create the Forgejo org and import the example repos
+    cmds:
+      - task: forgejo:install
+      - task: examples:init
+      - bash {{.FORGEJO_BOOTSTRAP_SCRIPT}} {{.FORGEJO_BOOTSTRAP_USER}} {{.FORGEJO_BOOTSTRAP_PASSWORD}} {{.FORGEJO_BOOTSTRAP_EMAIL}} {{.FORGEJO_BOOTSTRAP_ORG}} {{.FORGEJO_REPOS_DIR}}
+
+  examples:init:
+    desc: Initialize the example overlay repos for Forgejo import
+    cmds:
+      - |
+        for repo in blade aurora; do
+          if [ ! -d "examples/$repo/.git" ]; then
+            git -C "examples/$repo" init -b main
+            git -C "examples/$repo" add .
+            git -C "examples/$repo" commit -m "Initialize project overlay"
+          fi
+        done
+
+  argocd:repo-creds:
+    desc: Register Forgejo repo credentials in Argo CD
+    cmds:
+      - task: argocd:ready
+      - task: forgejo:bootstrap
+      - kubectl apply -f {{.ARGOCD_REPO_CREDS}}
+
+  lab:install:
+    desc: Apply the root Argo CD application for this lab
+    status:
+      - kubectl -n {{.ARGOCD_NAMESPACE}} get application capabilities-root >/dev/null 2>&1
+    cmds:
+      - task: argocd:repo-creds
+      - task: eso:install
+      - task: crossplane:install
+      - task: vault:init
+      - kubectl apply -f {{.ROOT_APP_MANIFEST}}
+
+  lab:wait:
+    desc: Wait for the lab Argo CD applications to become healthy
+    cmds:
+      - kubectl wait --for=create application/capabilities-platform -n {{.ARGOCD_NAMESPACE}} --timeout=180s
+      - kubectl wait --for=create application/project-blade -n {{.ARGOCD_NAMESPACE}} --timeout=180s
+      - kubectl wait --for=create application/project-aurora -n {{.ARGOCD_NAMESPACE}} --timeout=180s
+      - |
+        for app in capabilities-platform project-blade project-aurora; do
+          for i in $(seq 1 36); do
+            sync=$(kubectl -n {{.ARGOCD_NAMESPACE}} get application "$app" -o jsonpath='{.status.sync.status}' 2>/dev/null)
+            health=$(kubectl -n {{.ARGOCD_NAMESPACE}} get application "$app" -o jsonpath='{.status.health.status}' 2>/dev/null)
+            if [ "$sync" = "Synced" ] && [ "$health" = "Healthy" ]; then
+              break
+            fi
+            if [ "$health" = "Degraded" ]; then
+              printf 'application %s is Degraded (sync=%s health=%s)\n' "$app" "$sync" "$health" >&2
+              exit 1
+            fi
+            sleep 5
+            if [ "$i" -eq 36 ]; then
+              printf 'application %s did not become Synced/Healthy (sync=%s health=%s)\n' "$app" "$sync" "$health" >&2
+              exit 1
+            fi
+          done
+        done
+
+  verify:
+    desc: Run verification checks for the lab
+    cmds:
+      - kubectl -n {{.ARGOCD_NAMESPACE}} get applications
+      - kubectl get xrd compositeappdatabases.idp.demo.io compositeexternaldatabaseaccesses.idp.demo.io compositeappsecretimports.idp.demo.io
+      - kubectl get composition compositeappdatabases.idp.demo.io compositeexternaldatabaseaccesses.idp.demo.io compositeappsecretimports.idp.demo.io
+      - kubectl -n blade get compositeappdatabases,compositeexternaldatabaseaccesses,compositeappsecretimports
+      - kubectl -n aurora get compositeappdatabases,compositeexternaldatabaseaccesses,compositeappsecretimports
+      - kubectl -n blade get database,user,grant,externalsecret,pushsecret,secret
+      - kubectl -n aurora get database,user,grant,externalsecret,pushsecret,secret
+
+  ui:
+    desc: Print local UI endpoints
+    cmds:
+      - "printf 'Argo CD: %s\\n' '{{.ARGOCD_SERVER_URL}}'"
+      - "printf 'Vault: %s/ui/vault/auth\\n' '{{.VAULT_ADDR}}'"
+      - "printf 'Forgejo: %s\\n' '{{.FORGEJO_URL}}'"

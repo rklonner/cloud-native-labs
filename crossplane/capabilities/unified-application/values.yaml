@@ -1,0 +1,26 @@
+nameOverride: ""
+
+image:
+  repository: nginx
+  tag: "1.27"
+  pullPolicy: IfNotPresent
+
+service:
+  port: 80
+
+application:
+  replicaCount: 1
+  containerPort: 80
+
+capabilities:
+  databases:
+    - name: orders
+      providerConfigRef: mssql-local
+      roles:
+        - name: app
+          profile: readWrite
+          bindAs:
+            connectionString:
+              envVar: DATABASE_URL
+  databaseAccess: []
+  secretImports: []

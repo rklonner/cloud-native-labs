@@ -1,0 +1,43 @@
+# {{- range $db := .Values.capabilities.databases }}
+---
+apiVersion: idp.demo.io/v1alpha1
+kind: CompositeAppDatabase
+metadata:
+  name: {{ printf "%s-%s" (include "unified-application.fullname" $) $db.name }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+  appName: {{ include "unified-application.fullname" $ }}
+  databaseName: {{ $db.name }}
+  namespace: {{ $.Release.Namespace }}
+  providerConfigRef: {{ $db.providerConfigRef | quote }}
+  roles: {{ $db.roles | toJson }}
+# {{- end }}
+# {{- range $access := .Values.capabilities.databaseAccess }}
+---
+apiVersion: idp.demo.io/v1alpha1
+kind: CompositeExternalDatabaseAccess
+metadata:
+  name: {{ printf "%s-%s" (include "unified-application.fullname" $) $access.name }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+  appName: {{ include "unified-application.fullname" $ }}
+  accessName: {{ $access.name }}
+  namespace: {{ $.Release.Namespace }}
+  providerConfigRef: {{ $access.providerConfigRef | quote }}
+  target: {{ $access.target | toJson }}
+  roles: {{ $access.roles | toJson }}
+# {{- end }}
+# {{- range $import := .Values.capabilities.secretImports }}
+---
+apiVersion: idp.demo.io/v1alpha1
+kind: CompositeAppSecretImport
+metadata:
+  name: {{ printf "%s-%s" (include "unified-application.fullname" $) $import.name }}
+  namespace: {{ $.Release.Namespace }}
+spec:
+  appName: {{ include "unified-application.fullname" $ }}
+  importName: {{ $import.name }}
+  namespace: {{ $.Release.Namespace }}
+  source: {{ $import.source | toJson }}
+  bindAs: {{ $import.bindAs | toJson }}
+# {{- end }}

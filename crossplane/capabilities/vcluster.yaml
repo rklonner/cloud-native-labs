@@ -1,0 +1,17 @@
+experimental:
+  docker:
+    ports:
+      # Argo CD HTTPS NodePort 32080 -> https://localhost:8000
+      - "8000:32080"
+      # Vault UI/API NodePort 32200 -> http://localhost:8200
+      - "8200:32200"
+      # Forgejo HTTP NodePort 30080 -> http://localhost:3000
+      - "3000:30080"
+    enabled: true
+    registryProxy:
+      enabled: true
+
+controlPlane:
+  distro:
+    k8s:
+      enabled: true
