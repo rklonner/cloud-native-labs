@@ -142,12 +142,7 @@ spec:
             apiVersion = "mssql.sql.m.crossplane.io/v1alpha1",
             kind = "Grant",
             metadata = {
-              name = observed_xr.spec.projectName + "-readonly-grant",
-              annotations = {
-                # Allow a clean retry when the first grant attempt races the SQL user creation.
-                "crossplane.io/external-create-pending" = "",
-                "crossplane.io/external-create-failed" = ""
-              }
+              name = observed_xr.spec.projectName + "-readonly-grant"
             }
             spec = {
               forProvider = {
@@ -166,12 +161,7 @@ spec:
             apiVersion = "mssql.sql.m.crossplane.io/v1alpha1",
             kind = "Grant",
             metadata = {
-              name = observed_xr.spec.projectName + "-readwrite-grant",
-              annotations = {
-                # Allow a clean retry when the first grant attempt races the SQL user creation.
-                "crossplane.io/external-create-pending" = "",
-                "crossplane.io/external-create-failed" = ""
-              }
+              name = observed_xr.spec.projectName + "-readwrite-grant"
             }
             spec = {
               forProvider = {
@@ -191,7 +181,7 @@ spec:
             kind = "Usage",
             metadata = {
               name = observed_xr.spec.projectName + "-db-used-by-readonly-user"
-            }
+            },
             spec = {
               replayDeletion = True,
               of = {
@@ -216,7 +206,7 @@ spec:
             kind = "Usage",
             metadata = {
               name = observed_xr.spec.projectName + "-db-used-by-readwrite-user"
-            }
+            },
             spec = {
               replayDeletion = True,
               of = {
@@ -241,7 +231,7 @@ spec:
             kind = "Usage",
             metadata = {
               name = observed_xr.spec.projectName + "-readonly-user-used-by-grant"
-            }
+            },
             spec = {
               replayDeletion = True,
               of = {
@@ -266,7 +256,7 @@ spec:
             kind = "Usage",
             metadata = {
               name = observed_xr.spec.projectName + "-readwrite-user-used-by-grant"
-            }
+            },
             spec = {
               replayDeletion = True,
               of = {
@@ -386,7 +376,7 @@ spec:
               },
               data = [{
                 match = {
-                  secretKey = "", # if emtpy, all secret attributes will be pushed
+                  secretKey = "", # if empty, all secret attributes will be pushed
                   remoteRef = {
                     remoteKey = observed_xr.spec.projectName + "/database/ro-user"
                   }
@@ -416,7 +406,7 @@ spec:
               },
               data = [{
                 match = {
-                  secretKey = "", # if emtpy, all secret attributes will be pushed
+                  secretKey = "", # if empty, all secret attributes will be pushed
                   remoteRef = {
                     remoteKey = observed_xr.spec.projectName + "/database/rw-user"
                   }

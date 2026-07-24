@@ -1,17 +1,19 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: crossplane-razorapps-root
+  name: crossplane-providers
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
 spec:
   project: default
   source:
     repoURL: https://github.com/rklonner/cloud-native-labs.git
     targetRevision: HEAD
-    path: crossplane/composition-app-with-database-and-vault-integration-argocd/argocd/applications
+    path: crossplane/composition-app-with-database-and-vault-integration-argocd/argocd/resources/platform/crossplane-providers
   destination:
     server: https://kubernetes.default.svc
-    namespace: argocd
+    namespace: crossplane-system
   syncPolicy:
     automated:
       prune: true

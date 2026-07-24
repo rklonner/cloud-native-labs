@@ -17,10 +17,10 @@ vars:
   MSSQL_SERVICE_NAMESPACE: crossplane-system
   MSSQL_GATEWAY_IP: 172.22.0.1
 
-  ARGOCD_LOCAL_SERVICE: argocd/optional/service-argocd-local.yaml
-  ARGOCD_ADMIN_SECRET: argocd/optional/secret-argocd-admin-password.yaml
-  ARGOCD_CM_PATCH: argocd/optional/argocd-cm-merge-patch.yaml
-  ROOT_APP_MANIFEST: argocd/bootstrap/root-application.yaml
+  ARGOCD_LOCAL_SERVICE: bootstrap/argocd/service-argocd-local.yaml
+  ARGOCD_ADMIN_SECRET: bootstrap/argocd/secret-argocd-admin-password.yaml
+  ARGOCD_CM_PATCH: bootstrap/argocd/argocd-cm-merge-patch.yaml
+  ROOT_APP_MANIFEST: bootstrap/argocd/root-application.yaml
 
   ARGOCD_SERVER_URL: https://localhost:8000
   VAULT_ADDR: http://localhost:8200
@@ -31,7 +31,6 @@ tasks:
     cmds:
       - task: cluster:create
       - task: mssql:install
-      - task: mssql:wire
       - task: argocd:ready
       - task: eso:install
       - task: crossplane:install
@@ -89,7 +88,7 @@ tasks:
     desc: Point the Crossplane MSSQL provider secret at the vcluster Docker gateway
     cmds:
       - task: cluster:create
-      - kubectl apply -f argocd/resources/platform/2-crossplane-provider-configuration.yaml
+      - kubectl apply -f argocd/resources/platform/config/2-crossplane-provider-configuration.yaml
 
   mssql:delete:
     desc: Stop the local MSSQL container stack
@@ -154,12 +153,13 @@ tasks:
   vault:install:
     desc: Install Vault with local UI access
     status:
-      - kubectl -n {{.VAULT_NAMESPACE}} get pod vault-0 >/dev/null 2>&1
+      - kubectl -n {{.VAULT_NAMESPACE}} get statefulset vault >/dev/null 2>&1
     cmds:
       - task: cluster:create
       - helm repo add hashicorp https://helm.releases.hashicorp.com
       - helm upgrade --install vault hashicorp/vault --namespace {{.VAULT_NAMESPACE}} --create-namespace --set server.dev.enabled=true --set ui.enabled=true --set ui.serviceType=NodePort --set ui.serviceNodePort=32200
-      - kubectl wait --for=condition=Ready pod/vault-0 -n {{.VAULT_NAMESPACE}} --timeout=300s
+      - kubectl wait --for=create pod -n {{.VAULT_NAMESPACE}} -l app.kubernetes.io/name=vault --timeout=300s
+      - kubectl wait --for=condition=Ready pod -n {{.VAULT_NAMESPACE}} -l app.kubernetes.io/name=vault --timeout=300s
       - |
         for i in 1 2 3 4 5 6; do
           code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 {{.VAULT_ADDR}}/v1/sys/health || true)
@@ -184,7 +184,7 @@ tasks:
   lab:install:
     desc: Apply the root Argo CD application for this lab
     status:
-      - kubectl -n {{.ARGOCD_NAMESPACE}} get application crossplane-razorapps-root >/dev/null 2>&1
+      - kubectl -n {{.ARGOCD_NAMESPACE}} get application root >/dev/null 2>&1
     cmds:
       - task: argocd:ready
       - task: eso:install
@@ -195,12 +195,12 @@ tasks:
   lab:wait:
     desc: Wait for the lab Argo CD applications to become healthy
     cmds:
-      - kubectl wait --for=create application/crossplane-razorapps-providers -n {{.ARGOCD_NAMESPACE}} --timeout=180s
-      - kubectl wait --for=create application/crossplane-razorapps-platform -n {{.ARGOCD_NAMESPACE}} --timeout=180s
-      - kubectl wait --for=create application/crossplane-razorapps-blade -n {{.ARGOCD_NAMESPACE}} --timeout=180s
-      - kubectl wait --for=create application/crossplane-razorapps-aurora -n {{.ARGOCD_NAMESPACE}} --timeout=180s
+      - kubectl wait --for=create application/crossplane-providers -n {{.ARGOCD_NAMESPACE}} --timeout=180s
+      - kubectl wait --for=create application/platform-config -n {{.ARGOCD_NAMESPACE}} --timeout=180s
+      - kubectl wait --for=create application/project-blade -n {{.ARGOCD_NAMESPACE}} --timeout=180s
+      - kubectl wait --for=create application/project-aurora -n {{.ARGOCD_NAMESPACE}} --timeout=180s
       - |
-        for app in crossplane-razorapps-providers crossplane-razorapps-platform crossplane-razorapps-blade crossplane-razorapps-aurora; do
+        for app in crossplane-providers platform-config project-blade project-aurora; do
           for i in $(seq 1 36); do
             sync=$(kubectl -n {{.ARGOCD_NAMESPACE}} get application "$app" -o jsonpath='{.status.sync.status}' 2>/dev/null)
             health=$(kubectl -n {{.ARGOCD_NAMESPACE}} get application "$app" -o jsonpath='{.status.health.status}' 2>/dev/null)
@@ -225,7 +225,7 @@ tasks:
     desc: Run basic verification checks for the lab
     cmds:
       - kubectl -n {{.ARGOCD_NAMESPACE}} get applications
-      - kubectl -n {{.ARGOCD_NAMESPACE}} get application crossplane-razorapps-blade crossplane-razorapps-aurora
+      - kubectl -n {{.ARGOCD_NAMESPACE}} get application project-blade project-aurora
       - kubectl -n blade get razorapps.example.com
       - kubectl -n aurora get razorapps.example.com
 

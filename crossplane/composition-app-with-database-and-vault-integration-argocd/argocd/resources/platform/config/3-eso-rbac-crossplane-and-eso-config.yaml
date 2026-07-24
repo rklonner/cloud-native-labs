@@ -30,11 +30,11 @@ spec:
   forProvider:
     name: "eso-push-policy"
     policy: |
-      # 1. Schreibrechte für die eigentlichen Daten
+      # 1. Write access for the actual secret data
       path "projects/data/*" {
         capabilities = ["create", "update", "read", "delete", "list"]
       }
-      # 2. Rechte für die Metadaten (wichtig für den ESO Push-Check)
+      # 2. Metadata access required for ESO push reconciliation
       path "projects/metadata/*" {
         capabilities = ["create", "update", "read", "delete", "list"]
       }
@@ -54,7 +54,7 @@ spec:
     name: eso-secret-store-vault-token
     namespace: crossplane-system
 ---
-# Create a secret store in ESO that uses the Vault provider and die oben erstellten Token-Secret 
+# Create a secret store in ESO that uses the Vault provider and the token secret above
 apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
@@ -64,7 +64,7 @@ spec:
   provider:
     vault:
       server: "http://vault.vault.svc.cluster.local:8200"
-      path: "projects" 
+      path: "projects"
       version: "v2"
       auth:
         tokenSecretRef:

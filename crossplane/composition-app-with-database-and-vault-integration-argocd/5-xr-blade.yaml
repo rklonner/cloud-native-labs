@@ -1,7 +1,0 @@
-apiVersion: example.com/v1alpha1
-kind: RazorApp
-metadata:
-  name: blade
-  namespace: blade
-spec:
-  projectName: blade

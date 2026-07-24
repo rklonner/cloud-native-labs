@@ -1,22 +1,23 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: crossplane-razorapps-platform
+  name: project-aurora
   namespace: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-wave: "3"
 spec:
   project: default
   source:
     repoURL: https://github.com/rklonner/cloud-native-labs.git
     targetRevision: HEAD
-    path: crossplane/composition-app-with-database-and-vault-integration-argocd/argocd/resources/platform
+    path: crossplane/composition-app-with-database-and-vault-integration-argocd/argocd/resources/projects/aurora
   destination:
     server: https://kubernetes.default.svc
-    namespace: crossplane-system
+    namespace: aurora
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
+      - CreateNamespace=true
       - SkipDryRunOnMissingResource=true
