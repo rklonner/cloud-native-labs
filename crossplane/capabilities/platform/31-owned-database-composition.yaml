@@ -317,15 +317,15 @@ spec:
               }
             } for role in roles]
 
-            items = [db]
-            items += users
-            items += grants
-            items += database_usages
-            items += grant_usages
-            items += connection_secrets
-            items += vault_push_secrets
-            items += user_used_by_connection_secret
-            items += secret_store_used_by_vault_push
-            items += user_used_by_vault_push
+            _items = [db]
+            _items += users
+            _items += grants
+            _items += database_usages
+            _items += grant_usages
+            _items += connection_secrets
+            _items += vault_push_secrets
+            _items += user_used_by_connection_secret
+            _items += secret_store_used_by_vault_push
+            _items += user_used_by_vault_push
 
-            items
+            _items
