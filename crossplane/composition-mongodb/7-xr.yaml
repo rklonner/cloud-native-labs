@@ -1,0 +1,11 @@
+apiVersion: mongodb.example.crossplane.io/v1alpha1
+kind: XMongoDatabase
+metadata:
+  name: lab-mongodb
+  namespace: default
+spec:
+  parameters:
+    databaseName: labdb
+    rwUsername: lab-rw
+    roUsername: lab-ro
+    createReadOnlyUser: true

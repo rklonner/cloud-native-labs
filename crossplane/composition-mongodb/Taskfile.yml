@@ -1,0 +1,19 @@
+version: '3'
+
+tasks:
+  up:
+    cmds:
+      - docker compose up -d
+  connect-kind:
+    cmds:
+      - ./scripts/connect-kind-network.sh
+  install:
+    cmds:
+      - kubectl apply -f 1-provider-install.yaml
+      - kubectl apply -f 2-secrets.yaml
+      - kubectl apply -f 3-provider-config.yaml
+      - kubectl apply -f 4-xrd.yaml
+      - kubectl apply -f 5-composition.yaml
+  apply-xr:
+    cmds:
+      - kubectl apply -f 7-xr.yaml

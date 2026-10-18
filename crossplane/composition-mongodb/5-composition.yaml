@@ -1,0 +1,79 @@
+apiVersion: apiextensions.crossplane.io/v1
+kind: Composition
+metadata:
+  name: xmongodatabases.mongodb.example.crossplane.io
+spec:
+  compositeTypeRef:
+    apiVersion: mongodb.example.crossplane.io/v1alpha1
+    kind: XMongoDatabase
+  mode: Pipeline
+  pipeline:
+    - step: render-mongodb-workspace
+      functionRef:
+        name: crossplane-contrib-function-kcl
+      input:
+        apiVersion: krm.kcl.dev/v1alpha1
+        kind: KCLInput
+        spec:
+          source: |
+            oxr = option("params").oxr
+            database_name = oxr.spec.parameters.databaseName
+            rw_username = oxr.spec.parameters.rwUsername
+            ro_username = oxr.spec.parameters.roUsername or (database_name + "-ro")
+            create_ro = oxr.spec.parameters.createReadOnlyUser if oxr.spec.parameters.createReadOnlyUser != None else True
+
+            items = [{
+              apiVersion = "tf.upbound.io/v1beta1"
+              kind = "Workspace"
+              metadata = {
+                name = oxr.metadata.name + "-mongodb"
+              }
+              spec = {
+                deletionPolicy = "Delete"
+                providerConfigRef = {
+                  name = "terraform-mongodb-local"
+                }
+                writeConnectionSecretToRef = {
+                  name = oxr.metadata.name + "-mongodb-connection"
+                  namespace = oxr.metadata.namespace
+                }
+                forProvider = {
+                  source = "Remote"
+                  module = "git::https://github.com/rklonner/cloud-native-labs.git//crossplane/composition-mongodb/terraform?ref=main"
+                  vars = [
+                    { key = "mongodb_host", secretKeyRef = { name = "mongodb-root-connection", namespace = "crossplane-system", key = "mongodb_host" } },
+                    { key = "mongodb_port", secretKeyRef = { name = "mongodb-root-connection", namespace = "crossplane-system", key = "mongodb_port" } },
+                    { key = "mongodb_username", secretKeyRef = { name = "mongodb-root-connection", namespace = "crossplane-system", key = "mongodb_username" } },
+                    { key = "mongodb_password", secretKeyRef = { name = "mongodb-root-connection", namespace = "crossplane-system", key = "mongodb_password" } },
+                    { key = "mongodb_auth_database", secretKeyRef = { name = "mongodb-root-connection", namespace = "crossplane-system", key = "mongodb_auth_database" } },
+                    { key = "database_name", value = database_name },
+                    { key = "rw_username", value = rw_username },
+                    { key = "ro_username", value = ro_username },
+                    { key = "create_ro_user", value = "${create_ro}" },
+                  ]
+                }
+              }
+            }]
+      patches:
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.databaseName
+          toFieldPath: spec.forProvider.vars[5].value
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.rwUsername
+          toFieldPath: spec.forProvider.vars[6].value
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.roUsername
+          toFieldPath: spec.forProvider.vars[7].value
+        - type: FromCompositeFieldPath
+          fromFieldPath: spec.parameters.createReadOnlyUser
+          toFieldPath: spec.forProvider.vars[8].value
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.namespace
+          toFieldPath: spec.writeConnectionSecretToRef.namespace
+        - type: FromCompositeFieldPath
+          fromFieldPath: metadata.name
+          toFieldPath: spec.writeConnectionSecretToRef.name
+          transforms:
+            - type: string
+              string:
+                fmt: "%s-mongodb-connection"

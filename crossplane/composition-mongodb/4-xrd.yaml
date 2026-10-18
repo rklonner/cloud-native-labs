@@ -1,0 +1,51 @@
+apiVersion: apiextensions.crossplane.io/v2
+kind: CompositeResourceDefinition
+metadata:
+  name: xmongodatabases.mongodb.example.crossplane.io
+spec:
+  group: mongodb.example.crossplane.io
+  names:
+    kind: XMongoDatabase
+    plural: xmongodatabases
+  scope: Namespaced
+  defaultCompositionRef:
+    name: xmongodatabases.mongodb.example.crossplane.io
+  versions:
+    - name: v1alpha1
+      served: true
+      referenceable: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required:
+                - parameters
+              properties:
+                parameters:
+                  type: object
+                  required:
+                    - databaseName
+                    - rwUsername
+                  properties:
+                    databaseName:
+                      type: string
+                      description: MongoDB database name to create.
+                    rwUsername:
+                      type: string
+                      description: Read-write MongoDB username.
+                    roUsername:
+                      type: string
+                      description: Optional read-only MongoDB username.
+                    createReadOnlyUser:
+                      type: boolean
+                      description: Whether to create the optional RO user.
+                      default: true
+            status:
+              type: object
+              properties:
+                workspaceStatus:
+                  type: string
+                connectionSecretName:
+                  type: string
