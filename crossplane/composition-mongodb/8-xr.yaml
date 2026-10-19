@@ -1,7 +1,7 @@
 apiVersion: mongodb.example.crossplane.io/v1alpha1
 kind: XMongoDatabase
 metadata:
-  name: mongodb-barebone
+  name: barebone
   namespace: barebone
 spec:
   parameters:

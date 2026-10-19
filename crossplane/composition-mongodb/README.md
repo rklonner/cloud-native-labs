@@ -5,7 +5,7 @@
 * How to simulate an on-prem MongoDB server locally with Docker Compose
 * How to connect a local Docker service to a kind cluster network
 * How to configure the Crossplane Terraform provider and a `tf.m.upbound.io/Workspace`
-* How to provision a MongoDB database, an RW user, and an optional RO user using a Crossplane v2 namespaced XR flow
+  * How to provision a MongoDB database, an RW user, and an optional RO user using a Crossplane v2 namespaced XR flow
 * How to let Terraform generate the RW/RO passwords and publish them back into a Kubernetes Secret
 * How to keep the root MongoDB admin connection string in a Kubernetes Secret only
 * How to publish the generated MongoDB credentials into the Workspace connection secret
@@ -87,6 +87,13 @@ The composition passes only the database parameter through normal Terraform vars
 ## Usage
 
 Crossplane v2 does not support claim names in XRDs, so this lab uses a namespaced composite resource directly. The Workspace is rendered via `tf.m.upbound.io`.
+
+Suggested naming in this lab:
+
+* XR name: `lab`, `ember`, `barebone`
+* Workspace name: `<xr>-tf`
+* Connection secret: `<xr>-connection`
+* Database name: as defined in the XR parameters
 
 ```bash
 kubectl apply -f 7-xr.yaml

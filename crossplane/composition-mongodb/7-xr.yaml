@@ -1,7 +1,7 @@
 apiVersion: mongodb.example.crossplane.io/v1alpha1
 kind: XMongoDatabase
 metadata:
-  name: lab-mongodb
+  name: lab
   namespace: default
 spec:
   parameters:

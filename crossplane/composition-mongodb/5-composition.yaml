@@ -27,7 +27,7 @@ spec:
               apiVersion = "tf.m.upbound.io/v1beta1"
               kind = "Workspace"
               metadata = {
-                name = xr_name + "-mongodb"
+                name = xr_name + "-tf"
                 namespace = oxr.metadata.namespace
               }
               spec = {
@@ -36,7 +36,7 @@ spec:
                   kind = "ClusterProviderConfig"
                 }
                 writeConnectionSecretToRef = {
-                  name = xr_name + "-mongodb-connection"
+                  name = xr_name + "-connection"
                 }
                 forProvider = {
                   source = "Remote"
