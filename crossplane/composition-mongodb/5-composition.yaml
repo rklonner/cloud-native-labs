@@ -33,7 +33,7 @@ spec:
               spec = {
                 providerConfigRef = {
                   name = "terraform-mongodb-local"
-                  kind = "ProviderConfig"
+                  kind = "ClusterProviderConfig"
                 }
                 writeConnectionSecretToRef = {
                   name = xr_name + "-mongodb-connection"

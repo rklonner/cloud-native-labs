@@ -1,8 +1,7 @@
 apiVersion: tf.m.upbound.io/v1beta1
-kind: ProviderConfig
+kind: ClusterProviderConfig
 metadata:
   name: terraform-mongodb-local
-  namespace: default
 spec:
   configuration: |
     terraform {
@@ -14,7 +13,7 @@ spec:
     }
 
     locals {
-      mongodb = jsondecode(file("${path.module}/providerconfig.tfvars.json"))
+      mongodb = jsondecode(file("providerconfig.tfvars.json"))
     }
 
     provider "mongodb" {
@@ -24,13 +23,6 @@ spec:
       password      = local.mongodb.mongodb_password
       auth_database = local.mongodb.mongodb_auth_database
     }
-  credentials:
-    - source: Secret
-      filename: providerconfig.tfvars.json
-      secretRef:
-        name: mongodb-root-connection
-        namespace: crossplane-system
-        key: providerconfig.tfvars.json
   credentials:
     - source: Secret
       filename: providerconfig.tfvars.json

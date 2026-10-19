@@ -54,7 +54,7 @@ The Terraform provider configuration uses the documented MongoDB provider fields
 kubectl apply -f 2-secrets.yaml
 ```
 
-The lab keeps the root admin connection info in the Crossplane namespace. The ProviderConfig reads it from a Secret and injects the MongoDB provider block into every Workspace.
+The lab keeps the root admin connection info in the Crossplane namespace. The ClusterProviderConfig reads it from a Secret and injects the MongoDB provider block into every Workspace.
 
 For convenience, remember there are two different MongoDB connection URIs in this lab:
 
@@ -82,7 +82,7 @@ kubectl apply -f 5-composition.yaml
 
 The Terraform module itself lives in `crossplane/composition-mongodb/terraform/main.tf` and is referenced remotely via the GitHub repo URL in the composition.
 
-The composition passes only the database/user parameters through normal Terraform vars. The MongoDB root connection settings are centralized in the ProviderConfig and never appear in the Workspace spec.
+The composition passes only the database/user parameters through normal Terraform vars. The MongoDB root connection settings are centralized in the ClusterProviderConfig and never appear in the Workspace spec.
 
 ## Usage
 
