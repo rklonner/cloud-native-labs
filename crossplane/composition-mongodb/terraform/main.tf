@@ -49,6 +49,7 @@ resource "random_password" "ro" {
 resource "mongodb_db_collection" "sentinel" {
   db   = local.db_name
   name = "_crossplane_sentinel"
+  deletion_protection = false
 }
 
 resource "mongodb_db_user" "rw" {
