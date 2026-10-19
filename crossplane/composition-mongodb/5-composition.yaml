@@ -18,7 +18,7 @@ spec:
           source: |
             oxr = option("params").oxr
             database_name = oxr.spec.parameters.databaseName
-            rw_username = oxr.spec.parameters.rwUsername
+            rw_username = oxr.spec.parameters.rwUsername or (database_name + "-rw")
             ro_username = oxr.spec.parameters.roUsername or (database_name + "-ro")
             create_ro = oxr.spec.parameters.createReadOnlyUser if oxr.spec.parameters.createReadOnlyUser != None else True
             xr_name = oxr.metadata.name

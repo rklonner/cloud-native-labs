@@ -6,6 +6,4 @@ metadata:
 spec:
   parameters:
     databaseName: barebone
-    rwUsername: lab-rw
-    roUsername: lab-ro
     createReadOnlyUser: false

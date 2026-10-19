@@ -6,6 +6,4 @@ metadata:
 spec:
   parameters:
     databaseName: labdb
-    rwUsername: lab-rw
-    roUsername: lab-ro
     createReadOnlyUser: true

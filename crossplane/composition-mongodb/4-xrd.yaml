@@ -27,17 +27,16 @@ spec:
                   type: object
                   required:
                     - databaseName
-                    - rwUsername
                   properties:
                     databaseName:
                       type: string
                       description: MongoDB database name to create.
                     rwUsername:
                       type: string
-                      description: Read-write MongoDB username.
+                      description: Optional read-write MongoDB username. Defaults to `<databaseName>-rw`.
                     roUsername:
                       type: string
-                      description: Optional read-only MongoDB username.
+                      description: Optional read-only MongoDB username. Defaults to `<databaseName>-ro`.
                     createReadOnlyUser:
                       type: boolean
                       description: Whether to create the optional RO user.

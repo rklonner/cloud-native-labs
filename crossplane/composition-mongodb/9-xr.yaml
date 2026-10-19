@@ -1,0 +1,9 @@
+apiVersion: mongodb.example.crossplane.io/v1alpha1
+kind: XMongoDatabase
+metadata:
+  name: mongodb-ember
+  namespace: ember
+spec:
+  parameters:
+    databaseName: ember
+    createReadOnlyUser: false
