@@ -11,27 +11,6 @@ terraform {
   }
 }
 
-variable "mongodb_host" {
-  type = string
-}
-
-variable "mongodb_port" {
-  type = string
-}
-
-variable "mongodb_username" {
-  type = string
-}
-
-variable "mongodb_password" {
-  type      = string
-  sensitive = true
-}
-
-variable "mongodb_auth_database" {
-  type = string
-}
-
 variable "database_name" {
   type = string
 }
@@ -65,14 +44,6 @@ resource "random_password" "ro" {
   count   = local.create_ro ? 1 : 0
   length  = 24
   special = true
-}
-
-provider "mongodb" {
-  host          = var.mongodb_host
-  port          = var.mongodb_port
-  username      = var.mongodb_username
-  password      = var.mongodb_password
-  auth_database = var.mongodb_auth_database
 }
 
 resource "mongodb_db_collection" "sentinel" {

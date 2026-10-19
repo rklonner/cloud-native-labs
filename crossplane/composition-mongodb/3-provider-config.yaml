@@ -31,3 +31,10 @@ spec:
         name: mongodb-root-connection
         namespace: crossplane-system
         key: providerconfig.tfvars.json
+  credentials:
+    - source: Secret
+      filename: providerconfig.tfvars.json
+      secretRef:
+        name: mongodb-root-connection
+        namespace: crossplane-system
+        key: providerconfig.tfvars.json

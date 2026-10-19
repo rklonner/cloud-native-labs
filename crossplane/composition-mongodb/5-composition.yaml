@@ -26,10 +26,10 @@ spec:
             items = [{
               apiVersion = "tf.m.upbound.io/v1beta1"
               kind = "Workspace"
-                metadata = {
-                  name = xr_name + "-mongodb"
-                  namespace = oxr.metadata.namespace
-                }
+              metadata = {
+                name = xr_name + "-mongodb"
+                namespace = oxr.metadata.namespace
+              }
               spec = {
                 providerConfigRef = {
                   name = "terraform-mongodb-local"
