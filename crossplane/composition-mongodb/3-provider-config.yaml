@@ -1,7 +1,8 @@
-apiVersion: tf.upbound.io/v1beta1
+apiVersion: tf.m.upbound.io/v1beta1
 kind: ProviderConfig
 metadata:
   name: terraform-mongodb-local
+  namespace: default
 spec:
   configuration: |
     terraform {
@@ -12,37 +13,16 @@ spec:
       }
     }
 
-    variable "mongodb_uri" {
-      type = string
-    }
-
-    variable "mongodb_host" {
-      type = string
-    }
-
-    variable "mongodb_port" {
-      type = string
-    }
-
-    variable "mongodb_username" {
-      type = string
-    }
-
-    variable "mongodb_password" {
-      type      = string
-      sensitive = true
-    }
-
-    variable "mongodb_auth_database" {
-      type = string
+    locals {
+      mongodb = jsondecode(file("${path.module}/providerconfig.tfvars.json"))
     }
 
     provider "mongodb" {
-      host          = var.mongodb_host
-      port          = var.mongodb_port
-      username      = var.mongodb_username
-      password      = var.mongodb_password
-      auth_database = var.mongodb_auth_database
+      host          = local.mongodb.mongodb_host
+      port          = local.mongodb.mongodb_port
+      username      = local.mongodb.mongodb_username
+      password      = local.mongodb.mongodb_password
+      auth_database = local.mongodb.mongodb_auth_database
     }
   credentials:
     - source: Secret
